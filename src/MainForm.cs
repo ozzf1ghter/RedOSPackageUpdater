@@ -301,7 +301,22 @@ namespace RedOSPackageUpdater
                     (string.IsNullOrWhiteSpace(info.Notes) ? "" : "\n\n" + info.Notes) + "\n\nСкачать и установить?";
                 if (!AppDialog.Confirm(this, "Доступно обновление", message, "Обновить")) return;
                 SetStatus("Скачивание обновления...");
-                string downloaded = await Task.Run(() => AppUpdater.Download(info, null));
+                _fstecProgress.Value = 0;
+                _fstecProgress.Visible = true;
+                _fstecProgressLabel.Text = "Обновление: подключение...";
+                _fstecProgressLabel.Visible = true;
+                string downloaded = await Task.Run(() => AppUpdater.Download(info, (done, total) =>
+                {
+                    if (IsDisposed) return;
+                    BeginInvoke((Action)(() =>
+                    {
+                        int percent = total > 0 ? (int)Math.Min(100, done * 100 / total) : 0;
+                        _fstecProgress.Value = percent;
+                        _fstecProgressLabel.Text = total > 0
+                            ? string.Format("Обновление: {0}%  ({1:0.0} / {2:0.0} МБ)", percent, done / 1048576d, total / 1048576d)
+                            : string.Format("Обновление: {0:0.0} МБ", done / 1048576d);
+                    }));
+                }));
                 SetStatus("Установка обновления...");
                 AppUpdater.InstallAndRestart(downloaded);
                 Close();
@@ -314,6 +329,8 @@ namespace RedOSPackageUpdater
             finally
             {
                 _updateCheckRunning = false;
+                _fstecProgress.Visible = false;
+                _fstecProgressLabel.Visible = false;
                 if (!_running && !IsDisposed) SetStatus("Готово");
             }
         }

@@ -21,7 +21,7 @@ namespace RedOSPackageUpdater
     internal static class AppUpdater
     {
         // Semantic Versioning: major.minor.patch. При выпуске менять вместе с update.json.
-        public const string CurrentVersion = "1.1.2";
+        public const string CurrentVersion = "1.1.3";
         private const string Owner = "ozzf1ghter";
         private const string Repo = "RedOSPackageUpdater";
         public static UpdateInfo Check()
@@ -41,18 +41,46 @@ namespace RedOSPackageUpdater
         public static string Download(UpdateInfo info, Action<long, long> progress)
         {
             if (info == null) throw new ArgumentNullException("info");
-            var fileInfo = ApiObject("/repos/" + Owner + "/" + Repo + "/contents/RedOSPackageUpdater.exe?ref=main");
-            string blobSha = fileInfo.ContainsKey("sha") ? Convert.ToString(fileInfo["sha"]) : "";
-            if (string.IsNullOrEmpty(blobSha)) throw new InvalidDataException("GitHub не вернул идентификатор EXE");
-            var blob = ApiObject("/repos/" + Owner + "/" + Repo + "/git/blobs/" + blobSha, 32 * 1024 * 1024);
-            byte[] bytes = Convert.FromBase64String((Convert.ToString(blob["content"]) ?? "").Replace("\n", ""));
-            if (progress != null) progress(bytes.Length, bytes.Length);
-            string actual;
-            using (var hash = SHA256.Create()) actual = BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
-            if (!string.Equals(actual, info.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("SHA-256 загруженного обновления не совпадает с update.json");
             string current = Process.GetCurrentProcess().MainModule.FileName;
             string next = current + ".update";
-            File.WriteAllBytes(next, bytes);
+            var req = (HttpWebRequest)WebRequest.Create("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/main/RedOSPackageUpdater.exe");
+            req.UserAgent = "RedOSPackageUpdater/" + CurrentVersion;
+            req.AllowAutoRedirect = true;
+            req.Timeout = 30000;
+            req.ReadWriteTimeout = 60000;
+            string actual;
+            try
+            {
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var input = resp.GetResponseStream())
+                using (var output = new FileStream(next, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var hash = SHA256.Create())
+                {
+                    long total = resp.ContentLength;
+                    long done = 0;
+                    byte[] buffer = new byte[128 * 1024];
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        output.Write(buffer, 0, read);
+                        hash.TransformBlock(buffer, 0, read, null, 0);
+                        done += read;
+                        if (progress != null) progress(done, total);
+                    }
+                    hash.TransformFinalBlock(new byte[0], 0, 0);
+                    actual = BitConverter.ToString(hash.Hash).Replace("-", "").ToLowerInvariant();
+                }
+            }
+            catch
+            {
+                try { if (File.Exists(next)) File.Delete(next); } catch { }
+                throw;
+            }
+            if (!string.Equals(actual, info.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(next); } catch { }
+                throw new InvalidDataException("SHA-256 загруженного обновления не совпадает с update.json");
+            }
             return next;
         }
 
