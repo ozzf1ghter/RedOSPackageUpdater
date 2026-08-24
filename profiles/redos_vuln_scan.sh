@@ -200,7 +200,7 @@ while kill -0 "$trivy_pid" 2>/dev/null; do
   sleep 15
   err_count="$(wc -l < "$err" 2>/dev/null || echo 0)"
   if [ "${err_count:-0}" -ge "$err_line" ]; then
-    tail -n "+$err_line" "$err" 2>/dev/null | sed 's/^/TRIVY_LOG|/'
+    tail -n "+$err_line" "$err" 2>/dev/null | sed -e 's/[[:space:]]err\.stacktrace=.*$//' -e 's/^/TRIVY_LOG|/'
     err_line=$((err_count+1))
   fi
   if kill -0 "$trivy_pid" 2>/dev/null; then
@@ -236,7 +236,7 @@ trivy_pid=""
 # Вывод, появившийся после последнего 15-секундного опроса.
 err_count="$(wc -l < "$err" 2>/dev/null || echo 0)"
 if [ "${err_count:-0}" -ge "$err_line" ]; then
-  tail -n "+$err_line" "$err" 2>/dev/null | sed 's/^/TRIVY_LOG|/'
+  tail -n "+$err_line" "$err" 2>/dev/null | sed -e 's/[[:space:]]err\.stacktrace=.*$//' -e 's/^/TRIVY_LOG|/'
 fi
 if [ $rc -ne 0 ]; then
   echo "TRIVY_ERR|Trivy завершился с кодом $rc; подробности выше в журнале"
@@ -247,7 +247,7 @@ fi
 
 cat "$out"
 total=$(grep -c '^VULN|' "$out" 2>/dev/null || true)
-bdu=$(awk -F'|' '$2 ~ /^BDU:/{n++} END{print n+0}' "$out")
+bdu=$(awk -F'|' '$1=="VULN" && $2 ~ /^BDU:/{n++} END{print n+0}' "$out")
 critical=$(awk -F'|' '$2 ~ /^BDU:/ && $6=="CRITICAL"{n++} END{print n+0}' "$out")
 high=$(awk -F'|' '$2 ~ /^BDU:/ && $6=="HIGH"{n++} END{print n+0}' "$out")
 echo "VULN_SUMMARY|$total|$bdu|$critical|$high"
