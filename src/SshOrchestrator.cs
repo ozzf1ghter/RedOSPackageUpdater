@@ -123,7 +123,7 @@ namespace RedOSPackageUpdater
                             if (onError != null) { try { onError(item, ex); } catch { } }
                         }
                         finally { sem.Release(); }
-                    }, TaskCreationOptions.LongRunning));
+                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default));
                 }
                 Task.WaitAll(tasks.ToArray());
             }
@@ -180,7 +180,11 @@ namespace RedOSPackageUpdater
         // Имя лог-файла из имени/хоста узла, безопасное для файловой системы (без слэшей/двоеточий и т.п.).
         private static string SafeFileName(Node node, string fallback)
         {
-            return Regex.Replace((node.Name ?? node.Host ?? fallback), "[^\\w.-]", "_");
+            // Имя узла не обязано быть уникальным между подсистемами. Добавляем адрес, иначе два
+            // параллельных узла с одинаковым Name писали в один файл и перемешивали строки логов.
+            string name = !string.IsNullOrWhiteSpace(node.Name) ? node.Name.Trim() : fallback;
+            string host = !string.IsNullOrWhiteSpace(node.Host) ? node.Host.Trim() : fallback;
+            return Regex.Replace(name + "_" + host, "[^\\w.-]", "_");
         }
 
         // Логгер конкретного узла: пишет в его лог-файл на диске и одновременно шлёт строку в

@@ -110,6 +110,8 @@ namespace RedOSPackageUpdater
 
         public static void SaveConfig(AppConfig cfg)
         {
+            if (cfg == null) throw new ArgumentNullException("cfg");
+            Normalize(cfg);
             EnsureDirs();
             // зашифровать пароли пула в DPAPI, plain не пишем.
             // Если Password==null (не расшифровали при загрузке) - сохраняем исходный EncPassword, не затираем.

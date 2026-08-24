@@ -41,6 +41,7 @@ namespace RedOSPackageUpdater
 
         private CancellationTokenSource _cts;
         private volatile bool _running;
+        private bool _closeAfterOperation;
         // Разрешение действует только до завершения текущей операции. Нужен для массового первого
         // подключения: оператор подтверждает один ключ и осознанно разрешает остальные новые ключи пакета.
         private volatile bool _trustUnknownHostKeysForOperation;
@@ -297,10 +298,12 @@ namespace RedOSPackageUpdater
                     if (!silent) AppDialog.Info(this, "Обновления", "Установлена актуальная версия " + AppUpdater.CurrentVersion + ".");
                     return;
                 }
-                string message = "Доступна версия " + info.VersionText + "." +
-                    (string.IsNullOrWhiteSpace(info.Notes) ? "" : "\n\n" + info.Notes) + "\n\nСкачать и установить?";
+                // Полный список изменений может быть большим и не должен раздувать служебный диалог.
+                string message = "Доступна версия " + info.VersionText + ".\n\nСкачать и установить?";
                 if (!AppDialog.Confirm(this, "Доступно обновление", message, "Обновить")) return;
                 SetStatus("Скачивание обновления...");
+                _excluded.Visible = false;
+                _fstecProgress.Style = ProgressBarStyle.Continuous;
                 _fstecProgress.Value = 0;
                 _fstecProgress.Visible = true;
                 _fstecProgressLabel.Text = "Обновление: подключение...";
@@ -308,14 +311,14 @@ namespace RedOSPackageUpdater
                 string downloaded = await Task.Run(() => AppUpdater.Download(info, (done, total) =>
                 {
                     if (IsDisposed) return;
-                    BeginInvoke((Action)(() =>
+                    Ui(() =>
                     {
                         int percent = total > 0 ? (int)Math.Min(100, done * 100 / total) : 0;
                         _fstecProgress.Value = percent;
                         _fstecProgressLabel.Text = total > 0
                             ? string.Format("Обновление: {0}%  ({1:0.0} / {2:0.0} МБ)", percent, done / 1048576d, total / 1048576d)
                             : string.Format("Обновление: {0:0.0} МБ", done / 1048576d);
-                    }));
+                    });
                 }));
                 SetStatus("Установка обновления...");
                 AppUpdater.InstallAndRestart(downloaded);
@@ -329,9 +332,13 @@ namespace RedOSPackageUpdater
             finally
             {
                 _updateCheckRunning = false;
-                _fstecProgress.Visible = false;
-                _fstecProgressLabel.Visible = false;
-                if (!_running && !IsDisposed) SetStatus("Готово");
+                if (!IsDisposed && !Disposing)
+                {
+                    _fstecProgress.Visible = false;
+                    _fstecProgressLabel.Visible = false;
+                    _excluded.Visible = !_pkgBox.Visible;
+                    if (!_running) SetStatus("Готово");
+                }
             }
         }
 
@@ -752,7 +759,7 @@ namespace RedOSPackageUpdater
         // Папка логов конкретного запуска: Store.LogsDir\<prefix><timestamp>. Раньше эта строка была
         // продублирована по месту в 4 разных методах (RunTargets/RunRepoTargets/RunPkgOpTargets/
         // RunPreviewTargets), каждый со своим Path.Combine и своим форматом даты.
-        private const string LogDirTimeFormat = "yyyy-MM-dd_HHmmss";
+        private const string LogDirTimeFormat = "yyyy-MM-dd_HHmmss_fff";
         private static string NewLogDir(string prefix)
         {
             return Path.Combine(Store.LogsDir, prefix + DateTime.Now.ToString(LogDirTimeFormat));
@@ -904,18 +911,33 @@ namespace RedOSPackageUpdater
         // Запустить фоновую операцию: флаги/UI/статус + перехват ошибок + сброс по завершении.
         private void StartOperation(string status, Action<CancellationToken> body)
         {
-            if (_cts != null) { try { _cts.Dispose(); } catch { } }
-            _cts = new CancellationTokenSource();
+            if (_cts != null) throw new InvalidOperationException("Предыдущая операция ещё не завершена");
+            var source = new CancellationTokenSource();
+            _cts = source;
             _trustUnknownHostKeysForOperation = false;
             _running = true; SetRunningUi(true);
             SetStatus(status);
-            var token = _cts.Token;
+            var token = source.Token;
             Task.Factory.StartNew(() =>
             {
                 try { body(token); }
                 catch (Exception ex) { Ui(() => AppendLog("ОБЩАЯ ОШИБКА: " + ex.Message)); }
-                finally { Ui(() => { _running = false; SetRunningUi(false); }); }
-            });
+                finally
+                {
+                    Ui(() =>
+                    {
+                        _running = false;
+                        SetRunningUi(false);
+                        if (ReferenceEquals(_cts, source)) _cts = null;
+                        source.Dispose();
+                        if (_closeAfterOperation)
+                        {
+                            _closeAfterOperation = false;
+                            Close();
+                        }
+                    });
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
         // ---------- Боевой прогон ----------
@@ -1670,9 +1692,16 @@ namespace RedOSPackageUpdater
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (_running && MessageBox.Show("Идёт выполнение. Прервать и выйти?", "Выход", MessageBoxButtons.YesNo) == DialogResult.No)
-            { e.Cancel = true; return; }
-            if (_cts != null) _cts.Cancel();
+            if (_running)
+            {
+                if (!_closeAfterOperation && MessageBox.Show("Идёт выполнение. Прервать и выйти?", "Выход", MessageBoxButtons.YesNo) == DialogResult.No)
+                { e.Cancel = true; return; }
+                _closeAfterOperation = true;
+                if (_cts != null) _cts.Cancel();
+                SetStatus("Останавливаю перед выходом...");
+                e.Cancel = true;
+                return;
+            }
             try { Store.SaveConfig(_cfg); } catch { }
             base.OnFormClosing(e);
         }

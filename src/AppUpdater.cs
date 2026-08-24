@@ -14,37 +14,41 @@ namespace RedOSPackageUpdater
         public Version Version;
         public string VersionText;
         public string Sha256;
-        public string Notes;
+        public string CommitSha;
         public bool IsNewer;
     }
 
     internal static class AppUpdater
     {
-        // Semantic Versioning: major.minor.patch. При выпуске менять вместе с update.json.
-        public const string CurrentVersion = "1.1.3";
+        public const string CurrentVersion = BuildInfo.Version;
         private const string Owner = "ozzf1ghter";
         private const string Repo = "RedOSPackageUpdater";
         public static UpdateInfo Check()
         {
-            var content = ApiObject("/repos/" + Owner + "/" + Repo + "/contents/update.json?ref=main");
+            // Сначала фиксируем SHA вершины main. И manifest, и EXE затем читаются строго из
+            // этого коммита, чтобы во время push не смешать файлы двух разных версий.
+            var commit = ApiObject("/repos/" + Owner + "/" + Repo + "/commits/main");
+            string commitSha = commit.ContainsKey("sha") ? Convert.ToString(commit["sha"]) : "";
+            if (!IsGitSha(commitSha)) throw new InvalidDataException("GitHub не вернул идентификатор версии");
+            var content = ApiObject("/repos/" + Owner + "/" + Repo + "/contents/update.json?ref=" + commitSha);
             string manifest = DecodeContent(content);
             var m = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(manifest);
             string versionText = m != null && m.ContainsKey("version") ? Convert.ToString(m["version"]) : "";
             string sha = m != null && m.ContainsKey("sha256") ? Convert.ToString(m["sha256"]) : "";
-            string notes = m != null && m.ContainsKey("notes") ? Convert.ToString(m["notes"]) : "";
             Version remote;
             if (!Version.TryParse(versionText, out remote)) throw new InvalidDataException("В update.json указана некорректная версия");
             if (string.IsNullOrEmpty(sha) || sha.Length != 64) throw new InvalidDataException("В update.json отсутствует SHA-256");
-            return new UpdateInfo { Version = remote, VersionText = versionText, Sha256 = sha.ToLowerInvariant(), Notes = notes, IsNewer = remote > new Version(CurrentVersion) };
+            return new UpdateInfo { Version = remote, VersionText = versionText, Sha256 = sha.ToLowerInvariant(), CommitSha = commitSha, IsNewer = remote > new Version(CurrentVersion) };
         }
 
         public static string Download(UpdateInfo info, Action<long, long> progress)
         {
             if (info == null) throw new ArgumentNullException("info");
+            if (!IsGitSha(info.CommitSha)) throw new InvalidDataException("Не задан коммит обновления");
             string current = Process.GetCurrentProcess().MainModule.FileName;
             string next = current + ".update";
-            var req = (HttpWebRequest)WebRequest.Create("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/main/RedOSPackageUpdater.exe");
-            req.UserAgent = "RedOSPackageUpdater/" + CurrentVersion;
+            var req = (HttpWebRequest)WebRequest.Create("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/" + info.CommitSha + "/RedOSPackageUpdater.exe");
+            req.UserAgent = BuildInfo.UserAgent;
             req.AllowAutoRedirect = true;
             req.Timeout = 30000;
             req.ReadWriteTimeout = 60000;
@@ -58,6 +62,7 @@ namespace RedOSPackageUpdater
                 {
                     long total = resp.ContentLength;
                     long done = 0;
+                    if (progress != null) progress(0, total);
                     byte[] buffer = new byte[128 * 1024];
                     int read;
                     while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
@@ -102,7 +107,7 @@ namespace RedOSPackageUpdater
         private static Dictionary<string, object> ApiObject(string path, int maxJson = 1024 * 1024)
         {
             var req = (HttpWebRequest)WebRequest.Create("https://api.github.com" + path);
-            req.UserAgent = "RedOSPackageUpdater/" + CurrentVersion;
+            req.UserAgent = BuildInfo.UserAgent;
             req.Accept = "application/vnd.github+json";
             req.Headers["X-GitHub-Api-Version"] = "2022-11-28";
             req.Timeout = 30000; req.ReadWriteTimeout = 60000;
@@ -120,6 +125,14 @@ namespace RedOSPackageUpdater
             string content = obj != null && obj.ContainsKey("content") ? Convert.ToString(obj["content"]) : "";
             if (enc != "base64" || string.IsNullOrEmpty(content)) throw new InvalidDataException("GitHub не вернул содержимое файла");
             return Encoding.UTF8.GetString(Convert.FromBase64String(content.Replace("\n", "")));
+        }
+
+        private static bool IsGitSha(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length != 40) return false;
+            foreach (char c in value)
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+            return true;
         }
     }
 }
