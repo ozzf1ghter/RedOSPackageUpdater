@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Net;
 using System.Windows.Forms;
 
 namespace RedOSPackageUpdater
@@ -11,6 +12,10 @@ namespace RedOSPackageUpdater
         [STAThread]
         static void Main()
         {
+            // .NET Framework 4.6.2 на старых Windows по умолчанию может выбирать TLS 1.0.
+            // GitHub принимает только современный TLS, поэтому задаём TLS 1.2 до первого запроса.
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
             // Загрузка вшитых в exe сборок (Renci.SshNet и её зависимости) из ресурсов.
             AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbedded;
 
