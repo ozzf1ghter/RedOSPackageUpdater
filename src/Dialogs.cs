@@ -87,6 +87,7 @@ namespace RedOSPackageUpdater
     {
         private readonly ProgressBar _bar;
         private readonly Label _details;
+        private readonly Label _title;
 
         public UpdateProgressDialog()
         {
@@ -98,11 +99,19 @@ namespace RedOSPackageUpdater
             ClientSize = new Size(460, 138);
             BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
             var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
-            var title = new Label { Left = 22, Top = 18, Width = 416, Height = 24, Text = "Скачивание новой версии...", Font = Theme.UiFontBold };
+            _title = new Label { Left = 22, Top = 18, Width = 416, Height = 24, Text = "Скачивание новой версии...", Font = Theme.UiFontBold };
             _bar = new ProgressBar { Left = 22, Top = 52, Width = 416, Height = 18, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 24 };
             _details = new Label { Left = 22, Top = 82, Width = 416, Height = 26, Text = "Подключение к GitHub...", ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft };
             var hint = new Label { Left = 22, Top = 111, Width = 416, Height = 18, Text = "После проверки файл будет установлен автоматически.", ForeColor = Theme.Muted };
-            Controls.AddRange(new Control[] { stripe, title, _bar, _details, hint });
+            Controls.AddRange(new Control[] { stripe, _title, _bar, _details, hint });
+        }
+
+        public void SetStage(string title, string details)
+        {
+            _title.Text = title ?? "";
+            _details.Text = details ?? "";
+            _bar.Style = ProgressBarStyle.Marquee;
+            _bar.MarqueeAnimationSpeed = 24;
         }
 
         public void SetProgress(long done, long total)

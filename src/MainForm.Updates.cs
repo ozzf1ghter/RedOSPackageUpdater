@@ -14,8 +14,16 @@ namespace RedOSPackageUpdater
             UpdateProgressDialog updateProgress = null;
             try
             {
-                if (!silent) SetStatus("Проверка версии...");
+                if (!silent)
+                {
+                    SetStatus("Проверка версии...");
+                    updateProgress = new UpdateProgressDialog();
+                    updateProgress.SetStage("Проверка обновлений...", "Подключение к GitHub и проверка версии...");
+                    updateProgress.Show(this);
+                    updateProgress.Refresh();
+                }
                 UpdateInfo info = await Task.Run(() => AppUpdater.Check());
+                if (updateProgress != null) { updateProgress.Close(); updateProgress.Dispose(); updateProgress = null; }
                 if (!info.IsNewer)
                 {
                     if (!silent) AppDialog.Info(this, "Обновления", "Установлена актуальная версия " + AppUpdater.CurrentVersion + ".");
@@ -27,6 +35,7 @@ namespace RedOSPackageUpdater
 
                 SetStatus("Скачивание обновления...");
                 updateProgress = new UpdateProgressDialog();
+                updateProgress.SetStage("Скачивание новой версии...", "Подключение к GitHub...");
                 Enabled = false;
                 updateProgress.Show(this);
                 updateProgress.Refresh();

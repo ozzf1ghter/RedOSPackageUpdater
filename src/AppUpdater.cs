@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace RedOSPackageUpdater
@@ -25,6 +26,11 @@ namespace RedOSPackageUpdater
         private const string Repo = "RedOSPackageUpdater";
         public static UpdateInfo Check()
         {
+            // В обычном случае (обновлений нет) достаточно одного лёгкого запроса к raw.
+            // GitHub API иногда отвечает 504; обращаемся к нему только когда версия реально новее.
+            UpdateInfo latest = ParseManifest(ReadTextWithRetry("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/main/update.json"));
+            if (!latest.IsNewer) return latest;
+
             // Сначала фиксируем SHA вершины main. И manifest, и EXE затем читаются строго из
             // этого коммита, чтобы во время push не смешать файлы двух разных версий.
             var commit = ApiObject("/repos/" + Owner + "/" + Repo + "/commits/main");
@@ -32,13 +38,20 @@ namespace RedOSPackageUpdater
             if (!IsGitSha(commitSha)) throw new InvalidDataException("GitHub не вернул идентификатор версии");
             var content = ApiObject("/repos/" + Owner + "/" + Repo + "/contents/update.json?ref=" + commitSha);
             string manifest = DecodeContent(content);
+            UpdateInfo pinned = ParseManifest(manifest);
+            pinned.CommitSha = commitSha;
+            return pinned;
+        }
+
+        private static UpdateInfo ParseManifest(string manifest)
+        {
             var m = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(manifest);
             string versionText = m != null && m.ContainsKey("version") ? Convert.ToString(m["version"]) : "";
             string sha = m != null && m.ContainsKey("sha256") ? Convert.ToString(m["sha256"]) : "";
             Version remote;
             if (!Version.TryParse(versionText, out remote)) throw new InvalidDataException("В update.json указана некорректная версия");
             if (string.IsNullOrEmpty(sha) || sha.Length != 64) throw new InvalidDataException("В update.json отсутствует SHA-256");
-            return new UpdateInfo { Version = remote, VersionText = versionText, Sha256 = sha.ToLowerInvariant(), CommitSha = commitSha, IsNewer = remote > new Version(CurrentVersion) };
+            return new UpdateInfo { Version = remote, VersionText = versionText, Sha256 = sha.ToLowerInvariant(), IsNewer = remote > new Version(CurrentVersion) };
         }
 
         public static string Download(UpdateInfo info, Action<long, long> progress)
@@ -116,17 +129,48 @@ namespace RedOSPackageUpdater
 
         private static Dictionary<string, object> ApiObject(string path, int maxJson = 1024 * 1024)
         {
-            var req = (HttpWebRequest)WebRequest.Create("https://api.github.com" + path);
-            req.UserAgent = BuildInfo.UserAgent;
-            req.Accept = "application/vnd.github+json";
-            req.Headers["X-GitHub-Api-Version"] = "2022-11-28";
-            req.Timeout = 30000; req.ReadWriteTimeout = 60000;
-            using (var resp = (HttpWebResponse)req.GetResponse())
-            using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+            for (int attempt = 0; ; attempt++)
             {
-                var ser = new JavaScriptSerializer { MaxJsonLength = maxJson };
-                return ser.Deserialize<Dictionary<string, object>>(sr.ReadToEnd());
+                try
+                {
+                    var req = (HttpWebRequest)WebRequest.Create("https://api.github.com" + path);
+                    req.UserAgent = BuildInfo.UserAgent; req.Accept = "application/vnd.github+json";
+                    req.Headers["X-GitHub-Api-Version"] = "2022-11-28"; req.Timeout = 15000; req.ReadWriteTimeout = 30000;
+                    using (var resp = (HttpWebResponse)req.GetResponse()) using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                        return new JavaScriptSerializer { MaxJsonLength = maxJson }.Deserialize<Dictionary<string, object>>(sr.ReadToEnd());
+                }
+                catch (WebException ex)
+                {
+                    if (attempt >= 2 || !IsTransient(ex)) throw;
+                    Thread.Sleep(attempt == 0 ? 500 : 1500);
+                }
             }
+        }
+
+        private static string ReadTextWithRetry(string url)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    var req = (HttpWebRequest)WebRequest.Create(url); req.UserAgent = BuildInfo.UserAgent;
+                    req.Timeout = 15000; req.ReadWriteTimeout = 30000;
+                    using (var resp = (HttpWebResponse)req.GetResponse()) using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) return sr.ReadToEnd();
+                }
+                catch (WebException ex)
+                {
+                    if (attempt >= 2 || !IsTransient(ex)) throw;
+                    Thread.Sleep(attempt == 0 ? 500 : 1500);
+                }
+            }
+        }
+
+        private static bool IsTransient(WebException ex)
+        {
+            var response = ex.Response as HttpWebResponse;
+            if (response == null) return ex.Status == WebExceptionStatus.Timeout || ex.Status == WebExceptionStatus.ConnectFailure || ex.Status == WebExceptionStatus.ConnectionClosed;
+            int code = (int)response.StatusCode;
+            return code == 502 || code == 503 || code == 504;
         }
 
         private static string DecodeContent(Dictionary<string, object> obj)
