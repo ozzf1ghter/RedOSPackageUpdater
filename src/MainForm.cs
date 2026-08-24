@@ -1065,7 +1065,12 @@ namespace RedOSPackageUpdater
                 h.Append("<tr><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td>").Append(H(r.Name)).Append("</td><td>").Append(H(StatusText(r.Status))).Append("</td><td>").Append(H(r.Note)).Append("</td></tr>");
             h.Append("</tbody></table><div class='tools'><input id='q' placeholder='Поиск по БДУ, CVE, пакету...'><select id='sev'><option value=''>Любая критичность</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>UNKNOWN</option></select><select id='fix'><option value=''>Все записи</option><option value='yes'>Есть исправление</option><option value='no'>Нет исправления</option></select><select id='host'><option value=''>Все серверы</option>");
             var hosts = new List<string>();
-            foreach (var r in results) if (!hosts.Contains(r.Host ?? "")) { hosts.Add(r.Host ?? ""); h.Append("<option>").Append(H(r.Host)).Append("</option>"); }
+            foreach (var r in results)
+                if (!hosts.Contains(r.Host ?? ""))
+                {
+                    hosts.Add(r.Host ?? "");
+                    h.Append("<option value='").Append(H(r.Host)).Append("'>").Append(H(NodeLabel(r.Name, r.Host))).Append("</option>");
+                }
             h.Append("</select><span class='muted' id='shown'></span></div><table id='v'><thead><tr><th>Сервер</th><th>БДУ / CVE</th><th>Пакет</th><th>Установлено</th><th>Исправление</th><th>Критичность</th><th>Опубликована</th><th>Изменена</th><th>Описание</th></tr></thead><tbody>");
             foreach (var r in results)
                 foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
