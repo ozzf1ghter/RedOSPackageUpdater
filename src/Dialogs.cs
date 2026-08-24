@@ -18,6 +18,30 @@ namespace RedOSPackageUpdater
             Show(owner, title, message, true);
         }
 
+        public static bool Confirm(IWin32Window owner, string title, string message, string okText)
+        {
+            using (var f = new Form
+            {
+                Text = title, FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent, MinimizeBox = false,
+                MaximizeBox = false, ShowInTaskbar = false, ClientSize = new Size(430, 158),
+                BackColor = Theme.Surface, ForeColor = Theme.Text, Font = Theme.UiFont
+            })
+            {
+                var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
+                var text = new Label { Left = 24, Top = 18, Width = 382, Height = 76, Text = message ?? "", AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
+                var footer = new Panel { Dock = DockStyle.Bottom, Height = 50, BackColor = Theme.HeaderBg };
+                Theme.EdgeLine(footer, DockStyle.Top);
+                var cancel = new Button { Text = "Отмена", Width = 92, Height = 28, Left = 214, Top = 11, DialogResult = DialogResult.Cancel };
+                var ok = new Button { Text = string.IsNullOrEmpty(okText) ? "Продолжить" : okText, Width = 100, Height = 28, Left = 312, Top = 11, DialogResult = DialogResult.OK };
+                Theme.Secondary(cancel); Theme.Primary(ok);
+                footer.Controls.Add(cancel); footer.Controls.Add(ok);
+                f.Controls.Add(stripe); f.Controls.Add(text); f.Controls.Add(footer);
+                f.AcceptButton = ok; f.CancelButton = cancel;
+                return f.ShowDialog(owner) == DialogResult.OK;
+            }
+        }
+
         private static void Show(IWin32Window owner, string title, string message, bool error)
         {
             using (var f = new Form
@@ -75,6 +99,7 @@ namespace RedOSPackageUpdater
                 return f.ShowDialog() == DialogResult.OK ? tb.Text : null;
             }
         }
+
     }
 
     // Диалог одного узла.

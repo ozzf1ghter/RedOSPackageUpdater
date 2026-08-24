@@ -12,6 +12,8 @@ _to_delete/
 *.old
 *.bak
 *.new.exe
+*.update
+rpu_apply_update.cmd
 
 # IDE / компилятор
 .vs/

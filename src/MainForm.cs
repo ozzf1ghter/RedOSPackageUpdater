@@ -55,6 +55,7 @@ namespace RedOSPackageUpdater
         private Label _logHint;
         private bool _lastLineProgress;   // последняя строка лога - прогресс reposync (следующую пишем на её место)
         private string _lastReportDir;    // папка последнего отчёта предпроверки
+        private bool _updateCheckRunning;
 
         public MainForm()
         {
@@ -67,6 +68,7 @@ namespace RedOSPackageUpdater
             BuildUi();
             RebuildTree();
             RefreshExcluded();
+            Shown += async (s, e) => { await CheckAppUpdate(true); };
         }
 
         // ---------- Загрузка конфига / seed ----------
@@ -111,9 +113,13 @@ namespace RedOSPackageUpdater
             _vulnStatusMenu = new ToolStripMenuItem(VulnerabilityDb.StatusText()) { Enabled = false };
             mVuln.DropDownItems.Add(_vulnStatusMenu);
             var mSettings = new ToolStripMenuItem("Настройки", null, (s, e) => EditSettings());
+            var mUpdate = new ToolStripMenuItem("Обновление");
+            mUpdate.DropDownItems.Add("Проверить обновления", null, async (s, e) => await CheckAppUpdate(false));
+            mUpdate.DropDownItems.Add(new ToolStripSeparator());
+            mUpdate.DropDownItems.Add(new ToolStripMenuItem("Текущая версия: " + AppUpdater.CurrentVersion) { Enabled = false });
             var mAbout = new ToolStripMenuItem("О программе", null, (s, e) =>
-                MessageBox.Show("RED OS Package Updater\nМассовое обновление серверов RED OS по SSH.\nКонфиг: " + Store.AppDir, "О программе"));
-            menu.Items.AddRange(new ToolStripItem[] { mFile, mCreds, mHostKeys, mExcl, mRepo, mVuln, mSettings, mAbout });
+                AppDialog.Info(this, "О программе", "RED OS Package Updater " + AppUpdater.CurrentVersion + "\nМассовое обновление серверов RED OS по SSH."));
+            menu.Items.AddRange(new ToolStripItem[] { mFile, mCreds, mHostKeys, mExcl, mRepo, mVuln, mSettings, mUpdate, mAbout });
             Theme.Menu(menu);
 
             // Верхняя панель запуска
@@ -276,6 +282,40 @@ namespace RedOSPackageUpdater
             catch { }
 
             UpdateModeUi();   // начальная видимость поля пакетов / строки исключений
+        }
+
+        private async Task CheckAppUpdate(bool silent)
+        {
+            if (_updateCheckRunning) return;
+            _updateCheckRunning = true;
+            try
+            {
+                if (!silent) SetStatus("Проверка версии...");
+                UpdateInfo info = await Task.Run(() => AppUpdater.Check());
+                if (!info.IsNewer)
+                {
+                    if (!silent) AppDialog.Info(this, "Обновления", "Установлена актуальная версия " + AppUpdater.CurrentVersion + ".");
+                    return;
+                }
+                string message = "Доступна версия " + info.VersionText + "." +
+                    (string.IsNullOrWhiteSpace(info.Notes) ? "" : "\n\n" + info.Notes) + "\n\nСкачать и установить?";
+                if (!AppDialog.Confirm(this, "Доступно обновление", message, "Обновить")) return;
+                SetStatus("Скачивание обновления...");
+                string downloaded = await Task.Run(() => AppUpdater.Download(info, null));
+                SetStatus("Установка обновления...");
+                AppUpdater.InstallAndRestart(downloaded);
+                Close();
+            }
+            catch (Exception ex)
+            {
+                if (!silent) AppDialog.Error(this, "Ошибка обновления", ex.Message);
+                AppendLog("Ошибка проверки обновления: " + ex.Message);
+            }
+            finally
+            {
+                _updateCheckRunning = false;
+                if (!_running && !IsDisposed) SetStatus("Готово");
+            }
         }
 
         // Режим "пакеты" (Установить/Обновить пакеты) выбран в списке профиля.
