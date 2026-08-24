@@ -113,13 +113,13 @@ namespace RedOSPackageUpdater
             _vulnStatusMenu = new ToolStripMenuItem(VulnerabilityDb.StatusText()) { Enabled = false };
             mVuln.DropDownItems.Add(_vulnStatusMenu);
             var mSettings = new ToolStripMenuItem("Настройки", null, (s, e) => EditSettings());
-            var mUpdate = new ToolStripMenuItem("Обновление");
-            mUpdate.DropDownItems.Add("Проверить обновления", null, async (s, e) => await CheckAppUpdate(false));
-            mUpdate.DropDownItems.Add(new ToolStripSeparator());
-            mUpdate.DropDownItems.Add(new ToolStripMenuItem("Текущая версия: " + AppUpdater.CurrentVersion) { Enabled = false });
-            var mAbout = new ToolStripMenuItem("О программе", null, (s, e) =>
+            var mAbout = new ToolStripMenuItem("О программе");
+            mAbout.DropDownItems.Add("О RED OS Package Updater", null, (s, e) =>
                 AppDialog.Info(this, "О программе", "RED OS Package Updater " + AppUpdater.CurrentVersion + "\nМассовое обновление серверов RED OS по SSH."));
-            menu.Items.AddRange(new ToolStripItem[] { mFile, mCreds, mHostKeys, mExcl, mRepo, mVuln, mSettings, mUpdate, mAbout });
+            mAbout.DropDownItems.Add(new ToolStripSeparator());
+            mAbout.DropDownItems.Add("Проверить обновления", null, async (s, e) => await CheckAppUpdate(false));
+            mAbout.DropDownItems.Add(new ToolStripMenuItem("Текущая версия: " + AppUpdater.CurrentVersion) { Enabled = false });
+            menu.Items.AddRange(new ToolStripItem[] { mFile, mCreds, mHostKeys, mExcl, mRepo, mVuln, mSettings, mAbout });
             Theme.Menu(menu);
 
             // Верхняя панель запуска
