@@ -998,7 +998,8 @@ namespace RedOSPackageUpdater
             try
             {
                 BduFindingEnricher.Enrich(results);
-                const string header = "Система;Узел;Host;Источник;Идентификатор;Связанные CVE;Все алиасы;Пакет;Установленная версия;Исправленная версия;Исправление доступно;Критичность;Дата публикации;Дата изменения;Описание;Основная ссылка;Дополнительные ссылки";
+                int linuxAdded = FstecLinuxCatalog.Enrich(results);
+                const string header = "Система;Узел;Host;Источник;Тип определения;Диапазон ФСТЭК;Идентификатор;Связанные CVE;Все алиасы;Пакет;Установленная версия;Исправленная версия;Исправление доступно;Критичность;Дата публикации;Дата изменения;Описание;Основная ссылка;Дополнительные ссылки";
                 var fstec = new StringBuilder();
                 var all = new StringBuilder();
                 fstec.AppendLine(header); all.AppendLine(header);
@@ -1012,7 +1013,8 @@ namespace RedOSPackageUpdater
                         string primaryUrl = VulnerabilityUrl(v);
                         var row = new StringBuilder();
                         row.Append(Csv(r.System)).Append(';').Append(Csv(r.Name)).Append(';').Append(Csv(r.Host)).Append(';')
-                          .Append(Csv(source)).Append(';').Append(Csv(v.Id)).Append(';').Append(Csv(string.Join(", ", relatedCves.ToArray()))).Append(';')
+                          .Append(Csv(source)).Append(';').Append(Csv(string.Equals(v.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ? "Общий продукт Linux" : "Пакет RED OS")).Append(';')
+                          .Append(Csv(v.AffectedRange)).Append(';').Append(Csv(v.Id)).Append(';').Append(Csv(string.Join(", ", relatedCves.ToArray()))).Append(';')
                           .Append(Csv(string.Join(", ", (v.Aliases ?? new List<string>()).ToArray()))).Append(';')
                           .Append(Csv(v.Package)).Append(';').Append(Csv(v.InstalledVersion)).Append(';')
                           .Append(Csv(v.FixedVersion)).Append(';').Append(Csv(string.IsNullOrWhiteSpace(v.FixedVersion) ? "нет" : "да")).Append(';')
@@ -1030,6 +1032,7 @@ namespace RedOSPackageUpdater
                 AppendLog("Отчёт ФСТЭК: " + Path.Combine(logDir, "fstec_vulnerabilities.csv"));
                 AppendLog("Расширенный отчёт: " + Path.Combine(logDir, "all_vulnerabilities.csv"));
                 AppendLog("HTML-отчёт: " + htmlPath);
+                if (linuxAdded > 0) AppendLog("Дополнительная проверка общего продукта Linux: добавлено " + linuxAdded + " находок по версии работающего ядра");
             }
             catch (Exception ex) { AppendLog("Не удалось сформировать отчёт ФСТЭК: " + ex.Message); }
         }
@@ -1071,7 +1074,9 @@ namespace RedOSPackageUpdater
                     var cves = RelatedCves(v);
                     string url = VulnerabilityUrl(v);
                     bool hasFix = !string.IsNullOrWhiteSpace(v.FixedVersion);
-                    h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.PublishedDate)).Append("</td><td>").Append(H(v.LastModifiedDate)).Append("</td><td>").Append(H(v.Title)).Append("</td></tr>");
+                    h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.PublishedDate)).Append("</td><td>").Append(H(v.LastModifiedDate)).Append("</td><td>")
+                     .Append(string.Equals(v.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ? "<span class='tag'>Общий продукт Linux</span><br>Диапазон ФСТЭК: " + H(v.AffectedRange) + "<br>" : "")
+                     .Append(H(v.Title)).Append("</td></tr>");
                 }
             h.Append("</tbody></table></div><script>const q=document.getElementById('q'),s=document.getElementById('sev'),f=document.getElementById('fix'),ho=document.getElementById('host'),rows=[...document.querySelectorAll('#v tbody tr')],shown=document.getElementById('shown');function run(){let n=0,Q=q.value.toLowerCase();rows.forEach(r=>{let ok=(!Q||r.innerText.toLowerCase().includes(Q))&&(!s.value||r.dataset.sev==s.value)&&(!f.value||r.dataset.fix==f.value)&&(!ho.value||r.dataset.host==ho.value);r.classList.toggle('hidden',!ok);if(ok)n++});shown.textContent='Показано: '+n} [q,s,f,ho].forEach(x=>x.addEventListener(x.tagName=='INPUT'?'input':'change',run));run();</script></body></html>");
             return h.ToString();
@@ -1145,7 +1150,15 @@ namespace RedOSPackageUpdater
                         long totalMb = total > 0 ? total / (1024 * 1024) : 0;
                         Ui(() => UpdateVulnerabilityDbProgress(percent, doneMb, totalMb));
                     }, token);
-                    Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей успешно обновлена."); });
+                    lastPercent = -1;
+                    FstecLinuxCatalog.UpdateOnline((done, total) =>
+                    {
+                        int percent = total > 0 ? (int)(done * 100 / total) : -1;
+                        if (percent >= 0 && percent == lastPercent) return;
+                        lastPercent = percent;
+                        Ui(() => UpdateVulnerabilityDbProgress(percent, done / (1024 * 1024), total > 0 ? total / (1024 * 1024) : 0));
+                    }, token);
+                    Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей и каталог общего продукта Linux успешно обновлены."); });
                 }
                 catch (OperationCanceledException) { Ui(() => SetStatus("Загрузка базы ФСТЭК отменена")); }
                 catch (Exception ex) { Ui(() => { SetStatus("Ошибка загрузки базы ФСТЭК"); AppDialog.Error(this, "ФСТЭК", "Не удалось обновить базу:\n" + ex.Message); }); }
@@ -1189,10 +1202,16 @@ namespace RedOSPackageUpdater
         private void ImportVulnerabilityDb()
         {
             if (_running) { MessageBox.Show("Дождитесь завершения текущей операции"); return; }
-            using (var d = new OpenFileDialog { Title = "Архив базы Trivy/БДУ ФСТЭК", Filter = "Архив db.tar.gz|*.tar.gz;*.tgz|Все файлы|*.*" })
+            using (var d = new OpenFileDialog { Title = "Архив базы Trivy или официальная XML-выгрузка ФСТЭК", Filter = "Базы ФСТЭК|*.tar.gz;*.tgz;*.zip|Все файлы|*.*" })
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
-                try { VulnerabilityDb.Import(d.FileName); RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей успешно импортирована."); }
+                try
+                {
+                    if (string.Equals(Path.GetExtension(d.FileName), ".zip", StringComparison.OrdinalIgnoreCase))
+                        FstecLinuxCatalog.Import(d.FileName, CancellationToken.None);
+                    else VulnerabilityDb.Import(d.FileName);
+                    RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей успешно импортирована.");
+                }
                 catch (Exception ex) { AppDialog.Error(this, "ФСТЭК", "Ошибка импорта:\n" + ex.Message); }
             }
         }

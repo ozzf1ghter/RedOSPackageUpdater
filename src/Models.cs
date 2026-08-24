@@ -189,6 +189,8 @@ namespace RedOSPackageUpdater
         public string PrimaryUrl { get; set; }
         public string PublishedDate { get; set; }
         public string LastModifiedDate { get; set; }
+        public string DetectionKind { get; set; }
+        public string AffectedRange { get; set; }
         public List<string> Aliases { get; set; }
         public List<string> References { get; set; }
 

@@ -56,6 +56,7 @@ echo Compiling...
   /reference:System.Drawing.dll ^
   /reference:System.Windows.Forms.dll ^
   /reference:System.Web.Extensions.dll ^
+  /reference:System.Xml.Linq.dll ^
   /reference:System.Security.dll ^
   /reference:System.IO.Compression.dll ^
   /reference:System.IO.Compression.FileSystem.dll ^
