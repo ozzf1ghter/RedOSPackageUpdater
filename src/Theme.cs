@@ -198,7 +198,7 @@ namespace RedOSPackageUpdater
             t.HideSelection = false;
             t.FullRowSelect = true;
             t.ShowNodeToolTips = true;
-            t.DrawMode = TreeViewDrawMode.OwnerDrawText;
+            t.DrawMode = TreeViewDrawMode.OwnerDrawAll;
             t.DrawNode += TreeDrawNode;
         }
 
@@ -212,19 +212,41 @@ namespace RedOSPackageUpdater
             var font = node.NodeFont ?? tree.Font;
             bool selected = (e.State & TreeNodeStates.Selected) != 0;
 
-            var bounds = e.Bounds;
-            bounds.Width = Math.Max(0, tree.ClientSize.Width - bounds.Left - 2);
+            // OwnerDrawText оставлял системную синюю заливку под кнопкой раскрытия и чекбоксом,
+            // а нашу светлую — только под текстом. Рисуем всю строку и служебные глифы сами,
+            // поэтому выделение теперь выглядит как одна спокойная полоса без цветных обрывов.
+            var row = new Rectangle(0, e.Bounds.Top, tree.ClientSize.Width, tree.ItemHeight);
+            using (var bg = new SolidBrush(selected ? Sel : tree.BackColor)) e.Graphics.FillRectangle(bg, row);
 
-            // Фон/текст выделенной строки красим сами через Theme.Sel/Theme.Text, а не через
-            // SystemColors.Highlight/HighlightText - обнаружено на живой проверке: под mono/Linux
-            // (и потенциально в кастомных темах Windows) HighlightText может фактически совпасть
-            // с фоном, из-за чего текст выбранного узла становится невидимым. Своя палитра даёт
-            // гарантированный контраст независимо от системной темы - тот же принцип, по которому
-            // весь остальной UI этого приложения уже не полагается на системные цвета.
-            if (selected)
-                using (var b = new SolidBrush(Sel)) e.Graphics.FillRectangle(b, e.Bounds);
+            int centerY = row.Top + row.Height / 2;
+            int levelX = 8 + node.Level * tree.Indent;
+            int glyphX = levelX;
+            int checkX = levelX + 18;
+            int textX = levelX + 38;
+
+            if (node.Nodes.Count > 0)
+            {
+                var glyph = new Rectangle(glyphX, centerY - 5, 10, 10);
+                using (var pen = new Pen(Border)) e.Graphics.DrawRectangle(pen, glyph);
+                using (var pen = new Pen(Muted))
+                {
+                    e.Graphics.DrawLine(pen, glyph.Left + 2, centerY, glyph.Right - 2, centerY);
+                    if (!node.IsExpanded) e.Graphics.DrawLine(pen, glyph.Left + 5, glyph.Top + 2, glyph.Left + 5, glyph.Bottom - 2);
+                }
+            }
+
+            if (tree.CheckBoxes)
+            {
+                var state = node.Checked ? System.Windows.Forms.VisualStyles.CheckBoxState.CheckedNormal : System.Windows.Forms.VisualStyles.CheckBoxState.UncheckedNormal;
+                bool themed = Application.RenderWithVisualStyles;
+                var size = themed ? CheckBoxRenderer.GetGlyphSize(e.Graphics, state) : new Size(13, 13);
+                var location = new Point(checkX, centerY - size.Height / 2);
+                if (themed) CheckBoxRenderer.DrawCheckBox(e.Graphics, location, state);
+                else ControlPaint.DrawCheckBox(e.Graphics, new Rectangle(location, size), node.Checked ? ButtonState.Checked : ButtonState.Normal);
+            }
+
+            var bounds = new Rectangle(textX, row.Top, Math.Max(0, tree.ClientSize.Width - textX - 4), row.Height);
             var fg = node.ForeColor != Color.Empty ? node.ForeColor : Text;
-
             TextRenderer.DrawText(e.Graphics, node.Text, font, bounds, fg,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.Left);
