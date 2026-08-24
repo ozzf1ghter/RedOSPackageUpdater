@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using RedOSPackageUpdater;
 
 internal static class ParserTests
@@ -44,6 +45,14 @@ internal static class ParserTests
         var complete = new VulnerabilityFinding { Id = "BDU:2026-06252", Severity = "MEDIUM", Title = "Более свежие данные" };
         BduFindingEnricher.Enrich(complete);
         Check(complete.Severity == "MEDIUM" && complete.Title == "Более свежие данные", "данные Trivy не перезаписываются");
+
+        Check(ShellText.InSingleQuotes("a'b") == "a'\"'\"'b", "экранирование bash без потери апострофа");
+        Check(WebRequests.IsTransient(new WebException("timeout", WebExceptionStatus.Timeout)), "повтор запроса после таймаута");
+        Check(!WebRequests.IsTransient(new WebException("tls", WebExceptionStatus.TrustFailure)), "TLS-ошибка не маскируется повторами");
+
+        string matched;
+        Check(FstecLinuxCatalog.Applies("6.1.175", new[] { "до 6.1.180" }, out matched), "диапазон общего продукта Linux");
+        Check(!FstecLinuxCatalog.Applies("5.15.10", new[] { "до 6.1.180" }, out matched), "ветки ядра не смешиваются");
         return _failed == 0 ? 0 : 1;
     }
 }

@@ -193,9 +193,26 @@ namespace RedOSPackageUpdater
         private static void Download(string url, string path, Action<long, long> progress, CancellationToken ct)
         {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            var request = (HttpWebRequest)WebRequest.Create(url); request.UserAgent = BuildInfo.UserAgent; request.Timeout = 30000; request.ReadWriteTimeout = 30000;
-            using (var response = (HttpWebResponse)request.GetResponse()) using (Stream input = response.GetResponseStream()) using (var output = new FileStream(path, FileMode.Create, FileAccess.Write))
-            { byte[] buffer = new byte[128 * 1024]; long done = 0, total = response.ContentLength; int n; while ((n = input.Read(buffer, 0, buffer.Length)) > 0) { ct.ThrowIfCancellationRequested(); output.Write(buffer, 0, n); done += n; if (progress != null) progress(done, total); } }
+            WebRequests.Retry(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                var request = WebRequests.Create(url, 30000);
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (Stream input = response.GetResponseStream())
+                using (var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    byte[] buffer = new byte[128 * 1024];
+                    long done = 0, total = response.ContentLength;
+                    int n;
+                    while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        output.Write(buffer, 0, n); done += n;
+                        if (progress != null) progress(done, total);
+                    }
+                }
+                return true;
+            }, 3);
         }
     }
 }

@@ -94,7 +94,7 @@ namespace RedOSPackageUpdater
         // который выполняется от привилегированной SSH-учётки на проде. Применяется единообразно ко
         // ВСЕМ значениям, попадающим в такие литералы - не только к тем, что визуально выглядят
         // "пользовательским вводом" (раньше часть значений вроде ACTION/PROFILE эту очистку пропускала).
-        private static string Sh(string s) { return (s ?? "").Replace("'", ""); }
+        private static string Sh(string s) { return ShellText.InSingleQuotes(s); }
 
         // Параллельный обход items с ограничением maxPar и отменой ct.
         // onError (опционально) вызывается, если body(item) выбросил исключение, которое сама body

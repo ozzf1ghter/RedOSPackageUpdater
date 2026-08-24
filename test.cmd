@@ -5,8 +5,10 @@ if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist "%CSC%" exit /b 2
 if not exist tests mkdir tests
 "%CSC%" /nologo /target:exe /out:tests\ParserTests.exe ^
-  /reference:System.dll /reference:System.Web.Extensions.dll ^
-  tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs src\BduFindingEnricher.cs
+  /reference:System.dll /reference:System.Core.dll /reference:System.Web.Extensions.dll ^
+  /reference:System.Xml.Linq.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll ^
+  tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs src\BduFindingEnricher.cs ^
+  src\Infrastructure.cs src\FstecLinuxCatalog.cs src\VulnerabilityDb.cs src\BuildInfo.cs src\Store.cs src\Crypto.cs
 if errorlevel 1 exit /b 1
 tests\ParserTests.exe
 set RESULT=%ERRORLEVEL%

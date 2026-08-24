@@ -863,7 +863,8 @@ namespace RedOSPackageUpdater
             Task.Factory.StartNew(() =>
             {
                 try { body(token); }
-                catch (Exception ex) { Ui(() => AppendLog("ОБЩАЯ ОШИБКА: " + ex.Message)); }
+                catch (OperationCanceledException) { Ui(() => { AppendLog("Операция отменена пользователем"); SetStatus("Остановлено"); }); }
+                catch (Exception ex) { Ui(() => { AppendLog("ОБЩАЯ ОШИБКА: " + ex); SetStatus("Операция завершилась ошибкой"); }); }
                 finally
                 {
                     Ui(() =>

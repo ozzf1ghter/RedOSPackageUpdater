@@ -5,7 +5,6 @@ using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace RedOSPackageUpdater
@@ -60,35 +59,33 @@ namespace RedOSPackageUpdater
             if (!IsGitSha(info.CommitSha)) throw new InvalidDataException("Не задан коммит обновления");
             string current = Process.GetCurrentProcess().MainModule.FileName;
             string next = current + ".update";
-            var req = (HttpWebRequest)WebRequest.Create("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/" + info.CommitSha + "/RedOSPackageUpdater.exe");
-            req.UserAgent = BuildInfo.UserAgent;
-            req.AllowAutoRedirect = true;
-            req.Timeout = 30000;
-            req.ReadWriteTimeout = 60000;
             string actual;
             try
             {
-                using (var resp = (HttpWebResponse)req.GetResponse())
-                using (var input = resp.GetResponseStream())
-                using (var output = new FileStream(next, FileMode.Create, FileAccess.Write, FileShare.None))
-                using (var hash = SHA256.Create())
+                actual = WebRequests.Retry(() =>
                 {
-                    if (input == null) throw new IOException("Сервер вернул пустой поток обновления");
-                    long total = resp.ContentLength;
-                    long done = 0;
-                    if (progress != null) progress(0, total);
-                    byte[] buffer = new byte[128 * 1024];
-                    int read;
-                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    var req = WebRequests.Create("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/" + info.CommitSha + "/RedOSPackageUpdater.exe", 30000);
+                    req.ReadWriteTimeout = 60000;
+                    using (var resp = (HttpWebResponse)req.GetResponse())
+                    using (var input = resp.GetResponseStream())
+                    using (var output = new FileStream(next, FileMode.Create, FileAccess.Write, FileShare.None))
+                    using (var hash = SHA256.Create())
                     {
-                        output.Write(buffer, 0, read);
-                        hash.TransformBlock(buffer, 0, read, null, 0);
-                        done += read;
-                        if (progress != null) progress(done, total);
+                        if (input == null) throw new IOException("Сервер вернул пустой поток обновления");
+                        long total = resp.ContentLength, done = 0;
+                        if (progress != null) progress(0, total);
+                        byte[] buffer = new byte[128 * 1024]; int read;
+                        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            output.Write(buffer, 0, read);
+                            hash.TransformBlock(buffer, 0, read, null, 0);
+                            done += read;
+                            if (progress != null) progress(done, total);
+                        }
+                        hash.TransformFinalBlock(new byte[0], 0, 0);
+                        return BitConverter.ToString(hash.Hash).Replace("-", "").ToLowerInvariant();
                     }
-                    hash.TransformFinalBlock(new byte[0], 0, 0);
-                    actual = BitConverter.ToString(hash.Hash).Replace("-", "").ToLowerInvariant();
-                }
+                }, 3);
             }
             catch
             {
@@ -129,48 +126,18 @@ namespace RedOSPackageUpdater
 
         private static Dictionary<string, object> ApiObject(string path, int maxJson = 1024 * 1024)
         {
-            for (int attempt = 0; ; attempt++)
+            return WebRequests.Retry(() =>
             {
-                try
-                {
-                    var req = (HttpWebRequest)WebRequest.Create("https://api.github.com" + path);
-                    req.UserAgent = BuildInfo.UserAgent; req.Accept = "application/vnd.github+json";
-                    req.Headers["X-GitHub-Api-Version"] = "2022-11-28"; req.Timeout = 15000; req.ReadWriteTimeout = 30000;
-                    using (var resp = (HttpWebResponse)req.GetResponse()) using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                        return new JavaScriptSerializer { MaxJsonLength = maxJson }.Deserialize<Dictionary<string, object>>(sr.ReadToEnd());
-                }
-                catch (WebException ex)
-                {
-                    if (attempt >= 2 || !IsTransient(ex)) throw;
-                    Thread.Sleep(attempt == 0 ? 500 : 1500);
-                }
-            }
+                var req = WebRequests.Create("https://api.github.com" + path, 15000);
+                req.Accept = "application/vnd.github+json";
+                req.Headers["X-GitHub-Api-Version"] = "2022-11-28";
+                return new JavaScriptSerializer { MaxJsonLength = maxJson }.Deserialize<Dictionary<string, object>>(WebRequests.ReadUtf8(req));
+            }, 3);
         }
 
         private static string ReadTextWithRetry(string url)
         {
-            for (int attempt = 0; ; attempt++)
-            {
-                try
-                {
-                    var req = (HttpWebRequest)WebRequest.Create(url); req.UserAgent = BuildInfo.UserAgent;
-                    req.Timeout = 15000; req.ReadWriteTimeout = 30000;
-                    using (var resp = (HttpWebResponse)req.GetResponse()) using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) return sr.ReadToEnd();
-                }
-                catch (WebException ex)
-                {
-                    if (attempt >= 2 || !IsTransient(ex)) throw;
-                    Thread.Sleep(attempt == 0 ? 500 : 1500);
-                }
-            }
-        }
-
-        private static bool IsTransient(WebException ex)
-        {
-            var response = ex.Response as HttpWebResponse;
-            if (response == null) return ex.Status == WebExceptionStatus.Timeout || ex.Status == WebExceptionStatus.ConnectFailure || ex.Status == WebExceptionStatus.ConnectionClosed;
-            int code = (int)response.StatusCode;
-            return code == 502 || code == 503 || code == 504;
+            return WebRequests.Retry(() => WebRequests.ReadUtf8(WebRequests.Create(url, 15000)), 3);
         }
 
         private static string DecodeContent(Dictionary<string, object> obj)
