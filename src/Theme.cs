@@ -93,6 +93,16 @@ namespace RedOSPackageUpdater
             WireDisabledState(b, Surface, Text, Color.FromArgb(238, 240, 244), Color.FromArgb(228, 231, 236));
         }
 
+        // Компактная кнопка панели: остаётся полноценной целью для клика и клавиатуры,
+        // но не конкурирует визуально с основным действием экрана.
+        public static Button ToolbarButton(string text, int width)
+        {
+            var b = new Button { Text = text, Width = width, Height = 26, Margin = new Padding(4, 0, 0, 0) };
+            Secondary(b);
+            b.Font = UiFont;
+            return b;
+        }
+
         // Опасное действие (жирная заливка): Стоп
         public static void Danger_(Button b)
         {
@@ -257,6 +267,41 @@ namespace RedOSPackageUpdater
                     else if (side == DockStyle.Left) e.Graphics.DrawLine(pen, 0, 0, 0, r.Height);
                 }
             };
+        }
+
+        // Общая нормализация старых диалогов. Она не меняет их логику и размеры,
+        // но убирает смесь системных и фирменных контролов по разным окнам.
+        public static void Dialog(Form f)
+        {
+            f.Font = UiFont;
+            f.BackColor = Surface;
+            f.ForeColor = Text;
+            f.ShowInTaskbar = false;
+            ApplyDialogControls(f);
+        }
+
+        private static void ApplyDialogControls(Control parent)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                var b = c as Button;
+                if (b != null)
+                {
+                    if (b.DialogResult == DialogResult.OK) Primary(b); else Secondary(b);
+                }
+                else
+                {
+                    var tb = c as TextBox;
+                    if (tb != null) { tb.BackColor = Surface; tb.ForeColor = Text; tb.BorderStyle = BorderStyle.FixedSingle; }
+                    var cb = c as ComboBox;
+                    if (cb != null) Combo(cb);
+                    var check = c as CheckBox;
+                    if (check != null) Check(check);
+                    var grid = c as DataGridView;
+                    if (grid != null) Grid(grid);
+                }
+                if (c.HasChildren) ApplyDialogControls(c);
+            }
         }
 
         // светлая палитра для меню

@@ -32,6 +32,9 @@ namespace RedOSPackageUpdater
         private MenuStrip _menu;
         private ToolStripMenuItem _vulnStatusMenu;
         private Panel _leftPanel;
+        private SplitContainer _workspaceSplit;
+        private SplitContainer _contentSplit;
+        private Button _btnToggleLog;
         private StatusChip _status;
         private Label _excluded;
         private ProgressBar _fstecProgress;
@@ -60,7 +63,7 @@ namespace RedOSPackageUpdater
         public MainForm()
         {
             Text = "RED OS Package Updater";
-            Width = 1180; Height = 760; StartPosition = FormStartPosition.CenterScreen;
+            Width = 1240; Height = 800; MinimumSize = new Size(980, 640); StartPosition = FormStartPosition.CenterScreen;
             Font = Theme.UiFont;          // базовый шрифт наследуют все дочерние контролы
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
@@ -68,6 +71,7 @@ namespace RedOSPackageUpdater
             BuildUi();
             RebuildTree();
             RefreshExcluded();
+            Shown += delegate { ApplyInitialWorkspaceLayout(); };
             Shown += async (s, e) => { await CheckAppUpdate(true); };
         }
 
@@ -123,17 +127,17 @@ namespace RedOSPackageUpdater
             Theme.Menu(menu);
 
             // Верхняя панель запуска
-            var top = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = Theme.Surface, Padding = new Padding(4, 0, 4, 0) };
+            var top = new Panel { Dock = DockStyle.Top, Height = 82, BackColor = Theme.Surface, Padding = new Padding(12, 0, 12, 0) };
             Theme.EdgeLine(top, DockStyle.Bottom);
             // AutoSize=true у Label по умолчанию, но если после Text задать Width в том же
             // инициализаторе - явное значение переигрывает автоматически посчитанное, и текст
             // обрезается по этой (слишком узкой) ширине. Не задаём Width - пусть считает сам.
-            var profileLbl = new Label { Text = "Профиль:", Left = 10, Top = 16, AutoSize = true, ForeColor = Theme.Muted };
+            var profileLbl = new Label { Text = "Сценарий", Left = 12, Top = 8, AutoSize = true, ForeColor = Theme.Muted, Font = Theme.UiFontSmall };
             top.Controls.Add(profileLbl);
-            var profileBox = new Panel { Left = 94, Top = 9, Width = 264, Height = 27, BackColor = Theme.Surface };
+            var profileBox = new Panel { Left = 12, Top = 28, Width = 286, Height = 30, BackColor = Theme.Surface };
             Theme.Box(profileBox);
             top.Controls.Add(profileBox);
-            _profile = new ComboBox { Left = 2, Top = 2, Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
+            _profile = new ComboBox { Left = 2, Top = 3, Width = 282, DropDownStyle = ComboBoxStyle.DropDownList };
             Theme.Combo(_profile);
             _profile.Items.Add("Ядро kernel-lt + security");
             _profile.Items.Add("Только security");
@@ -147,7 +151,7 @@ namespace RedOSPackageUpdater
             _profile.SelectedIndex = 0;
             _profile.SelectedIndexChanged += (s, e) => UpdateModeUi();
             profileBox.Controls.Add(_profile);
-            _noReboot = new CheckBox { Left = 366, Top = 11, Width = 230, Text = "Не перезагружать" };
+            _noReboot = new CheckBox { Left = 310, Top = 31, Width = 180, Text = "Не перезагружать" };
             Theme.Check(_noReboot);
             top.Controls.Add(_noReboot);
             _tips = new ToolTip { AutoPopDelay = 20000, InitialDelay = 400, ReshowDelay = 100 };
@@ -157,32 +161,34 @@ namespace RedOSPackageUpdater
                 "Режим для предварительной установки вне окна обслуживания - перезагрузить все узлы можно\n" +
                 "позже отдельным запуском (профиль \"Обновить пакеты\" + reboot, либо вручную).");
             // Поле пакетов (видно только в режимах "пакеты"), на второй строке вместо строки исключений.
-            _pkgLabel = new Label { Left = 10, Top = 48, Width = 58, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted };
+            _pkgLabel = new Label { Left = 310, Top = 8, Width = 58, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted, Font = Theme.UiFontSmall };
             top.Controls.Add(_pkgLabel);
-            _pkgBox = new TextBox { Left = 70, Top = 45, Width = 860, Visible = false, Font = Theme.Mono, BorderStyle = BorderStyle.FixedSingle };
+            _pkgBox = new TextBox { Left = 310, Top = 28, Width = 400, Height = 30, Visible = false, Font = Theme.Mono, BorderStyle = BorderStyle.FixedSingle };
             top.Controls.Add(_pkgBox);
-            _btnPreview = new Button { Left = 604, Top = 10, Width = 150, Height = 28, Text = "Предпроверка" };
+            _btnPreview = new Button { Width = 130, Height = 32, Text = "Предпроверка" };
             _btnPreview.Click += (s, e) => PreviewChecked();
             Theme.Secondary(_btnPreview);
             top.Controls.Add(_btnPreview);
-            _btnRun = new Button { Left = 760, Top = 10, Width = 168, Height = 28, Text = "Запустить отмеченные" };
+            _btnRun = new Button { Width = 174, Height = 32, Text = "Запустить отмеченные" };
             _btnRun.Click += (s, e) => RunChecked();
             Theme.Primary(_btnRun);
             top.Controls.Add(_btnRun);
-            _btnStop = new Button { Left = 934, Top = 10, Width = 72, Height = 28, Text = "Стоп", Enabled = false };
+            _btnStop = new Button { Width = 72, Height = 32, Text = "Стоп", Enabled = false };
             _btnStop.Click += (s, e) => { if (_cts != null) _cts.Cancel(); SetStatus("Останавливаю..."); };
             Theme.Danger_(_btnStop);
             top.Controls.Add(_btnStop);
-            _status = new StatusChip { Left = 1014, Top = 11, Width = 148, Height = 27 };
+            _status = new StatusChip { Width = 158, Height = 28 };
             _status.SetStatus("Готово", StatusChip.Kind.Idle);
             top.Controls.Add(_status);
-            _excluded = new Label { Left = 10, Top = 47, Width = 1100, Height = 18, ForeColor = Theme.Danger, Cursor = Cursors.Hand, Text = "" };
+            _excluded = new Label { Left = 12, Top = 62, Width = 1100, Height = 18, ForeColor = Theme.Danger, Cursor = Cursors.Hand, Text = "" };
             _excluded.Click += (s, e) => EditExclusions();
             top.Controls.Add(_excluded);
-            _fstecProgress = new ProgressBar { Left = 10, Top = 47, Width = 880, Height = 16, Minimum = 0, Maximum = 100, Visible = false };
-            _fstecProgressLabel = new Label { Left = 900, Top = 47, Width = 262, Height = 18, TextAlign = ContentAlignment.MiddleRight, ForeColor = Theme.Muted, Visible = false };
+            _fstecProgress = new ProgressBar { Left = 12, Top = 63, Width = 880, Height = 12, Minimum = 0, Maximum = 100, Visible = false };
+            _fstecProgressLabel = new Label { Left = 900, Top = 60, Width = 262, Height = 18, TextAlign = ContentAlignment.MiddleRight, ForeColor = Theme.Muted, Visible = false };
             top.Controls.Add(_fstecProgress);
             top.Controls.Add(_fstecProgressLabel);
+            top.Resize += delegate { LayoutCommandBar(top, profileBox); };
+            LayoutCommandBar(top, profileBox);
 
             // Левая панель: дерево + управление. Фон чуть темнее контента - отделяет навигацию от данных,
             // дерево внутри остаётся белой "карточкой" на этом фоне.
@@ -190,15 +196,16 @@ namespace RedOSPackageUpdater
             // (имя системы + "[N]") не помещается по ширине, он просто обрезается по границе
             // контрола без "..." - это и была причина потерянной "]" на реальном Windows (там
             // Segoe UI шире, чем шрифт-заместитель в песочнице, где вёрстка проверялась).
-            var left = new Panel { Dock = DockStyle.Left, Width = 410, BackColor = Theme.SidebarBg, Padding = new Padding(6, 4, 6, 0) };
+            var left = new Panel { Dock = DockStyle.Fill, BackColor = Theme.SidebarBg, Padding = new Padding(8, 6, 8, 8) };
             Theme.EdgeLine(left, DockStyle.Right);
-            var treeHeader = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = Theme.SidebarBg };
+            var treeHeader = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Theme.SidebarBg };
             var treeTitle = Theme.SectionLabel("Серверы");
-            treeTitle.Left = 2; treeTitle.Top = 4; treeTitle.Width = 180; treeTitle.Height = 20;
-            var markAll = new LinkLabel { Text = "Отметить все", AutoSize = true, Top = 4, Left = 255, Font = Theme.UiFont, LinkColor = Theme.Accent, ActiveLinkColor = Theme.AccentDown, VisitedLinkColor = Theme.Accent };
-            var markNone = new LinkLabel { Text = "Снять", AutoSize = true, Top = 4, Left = 350, Font = Theme.UiFont, LinkColor = Theme.Accent, ActiveLinkColor = Theme.AccentDown, VisitedLinkColor = Theme.Accent };
-            markAll.LinkClicked += (s, e) => CheckAll(true);
-            markNone.LinkClicked += (s, e) => CheckAll(false);
+            treeTitle.Left = 2; treeTitle.Top = 5; treeTitle.Width = 150; treeTitle.Height = 20;
+            var markNone = Theme.ToolbarButton("Снять", 56);
+            var markAll = Theme.ToolbarButton("Отметить все", 94);
+            markNone.Dock = DockStyle.Right; markAll.Dock = DockStyle.Right;
+            markAll.Click += (s, e) => CheckAll(true);
+            markNone.Click += (s, e) => CheckAll(false);
             _tips.SetToolTip(markAll, "Отметить все серверы");
             _tips.SetToolTip(markNone, "Снять все отметки");
             treeHeader.Controls.Add(treeTitle);
@@ -208,21 +215,31 @@ namespace RedOSPackageUpdater
             Theme.Tree(_tree);
             _tree.AfterCheck += TreeAfterCheck;
             _tree.NodeMouseClick += (s, e) => { if (e.Button == MouseButtons.Right) { _tree.SelectedNode = e.Node; ShowTreeMenu(e.Node); } };
-            var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 74, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Padding = new Padding(0, 6, 0, 4), BackColor = Theme.SidebarBg };
+            var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 7, 0, 0), BackColor = Theme.SidebarBg };
             Theme.EdgeLine(leftButtons, DockStyle.Top);
-            AddBtn(leftButtons, "+ Система", () => AddSystem());
-            AddBtn(leftButtons, "+ Узел", () => AddNode());
-            AddBtn(leftButtons, "Массово узлы", () => BulkNodes());
-            AddBtn(leftButtons, "Изменить", () => EditSelected());
-            AddBtn(leftButtons, "Удалить", () => DeleteSelected());
-            AddBtn(leftButtons, "Сервисы системы", () => EditServices());
+            AddCompactBtn(leftButtons, "+ Система", 82, () => AddSystem());
+            AddCompactBtn(leftButtons, "+ Узел", 68, () => AddNode());
+            AddCompactBtn(leftButtons, "Массово", 76, () => BulkNodes());
+            var more = AddCompactBtn(leftButtons, "Ещё ▾", 62, delegate { });
+            var nodeActions = new ContextMenuStrip();
+            nodeActions.Items.Add("Изменить", null, (s, e) => EditSelected());
+            nodeActions.Items.Add("Сервисы системы", null, (s, e) => EditServices());
+            nodeActions.Items.Add(new ToolStripSeparator());
+            nodeActions.Items.Add("Удалить", null, (s, e) => DeleteSelected());
+            more.Click -= more.Tag as EventHandler;
+            more.Click += (s, e) => nodeActions.Show(more, new Point(0, more.Height));
             left.Controls.Add(_tree);
             left.Controls.Add(treeHeader);
             left.Controls.Add(leftButtons);
             _leftPanel = left;
 
-            // Центр: сводка + лог
-            var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 360, BackColor = Theme.Bg, SplitterWidth = 6 };
+            // Рабочая область: ширину панели серверов можно менять, но по умолчанию она компактна.
+            _workspaceSplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 348, BackColor = Theme.Bg, SplitterWidth = 5, FixedPanel = FixedPanel.Panel1 };
+            _workspaceSplit.Panel1.Controls.Add(left);
+
+            // Центр: сводка + журнал. Журнал можно скрыть, когда важнее видеть больше результатов.
+            var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 410, BackColor = Theme.Bg, SplitterWidth = 5 };
+            _contentSplit = split;
             split.Panel1.Padding = new Padding(8, 8, 8, 4);
             split.Panel2.Padding = new Padding(8, 4, 8, 8);
             _summary = new DataGridView
@@ -232,9 +249,13 @@ namespace RedOSPackageUpdater
             };
             Theme.Grid(_summary);
             var gridHeader = Theme.SectionLabel("Очередь и результаты");
-            gridHeader.Dock = DockStyle.Top; gridHeader.Height = 20; gridHeader.Padding = new Padding(2, 0, 0, 4);
-            AddCol(Col.System, "Система", 130); AddCol(Col.Name, "Узел", 130); AddCol(Col.Host, "Host", 110);
-            AddCol(Col.St, "Статус", 70); AddCol(Col.Upd, "Обновление", 110); AddCol(Col.Reb, "Reboot", 90);
+            gridHeader.Dock = DockStyle.Top; gridHeader.Height = 26; gridHeader.Padding = new Padding(2, 0, 0, 5);
+            _btnToggleLog = Theme.ToolbarButton("Скрыть журнал", 116);
+            _btnToggleLog.Dock = DockStyle.Right;
+            _btnToggleLog.Click += (s, e) => ToggleLogPanel();
+            gridHeader.Controls.Add(_btnToggleLog);
+            AddCol(Col.System, "Система", 128); AddCol(Col.Name, "Узел", 150); AddCol(Col.Host, "IP / host", 112);
+            AddCol(Col.St, "Статус", 92); AddCol(Col.Upd, "Результат", 110); AddCol(Col.Reb, "Reboot", 82);
             AddCol(Col.Pre, "Prestop", 70); AddCol(Col.Post, "Postcheck", 80); AddCol(Col.Ker, "Ядро", 150);
             AddCol(Col.Os, "ОС узла", 170);   // из /etc/os-release узла (маркер OS_INFO) - парк может быть смешанным
             AddCol(Col.Note, "Примечание", 260);
@@ -246,14 +267,14 @@ namespace RedOSPackageUpdater
             };
             _log = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, WordWrap = false, Font = Theme.Mono, BackColor = Color.White, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, HideSelection = false };
             _log.KeyDown += (s, e) => { if (e.Control && e.KeyCode == Keys.A) { _log.SelectAll(); e.Handled = true; e.SuppressKeyPress = true; } };
-            var logBar = new Panel { Dock = DockStyle.Top, Height = 34, BackColor = Theme.Bg };
+            var logBar = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = Theme.Bg };
             var btnAllLogs = new Button { Text = "Все узлы", Left = 0, Top = 3, Width = 90, Height = 26 };
             Theme.Secondary(btnAllLogs);
             btnAllLogs.Click += (s, e) => ShowAllLogs();
             var btnReports = new Button { Text = "Папка отчётов", Left = 96, Top = 3, Width = 118, Height = 26 };
             Theme.Secondary(btnReports);
             btnReports.Click += (s, e) => OpenReportsFolder();
-            _logHint = new Label { Left = 224, Top = 8, Width = 640, Text = "Лог: все узлы. Клик по строке сводки — только её лог.", ForeColor = Theme.Muted };
+            _logHint = new Label { Left = 224, Top = 9, Width = 520, Text = "Выберите строку результата, чтобы видеть журнал только этого узла.", ForeColor = Theme.Muted };
             logBar.Controls.Add(btnAllLogs); logBar.Controls.Add(btnReports); logBar.Controls.Add(_logHint);
             _summary.SelectionChanged += (s, e) =>
             {
@@ -266,8 +287,8 @@ namespace RedOSPackageUpdater
             split.Panel2.Controls.Add(_log);
             split.Panel2.Controls.Add(logBar);
 
-            Controls.Add(split);
-            Controls.Add(left);
+            _workspaceSplit.Panel2.Controls.Add(split);
+            Controls.Add(_workspaceSplit);
             Controls.Add(top);
             Controls.Add(menu);
             MainMenuStrip = menu;
@@ -348,6 +369,64 @@ namespace RedOSPackageUpdater
             b.Click += (s, e) => { try { act(); } catch (Exception ex) { AppendLog("ОШИБКА: " + ex); MessageBox.Show(ex.Message); } };
             parent.Controls.Add(b);
             return b;
+        }
+
+        private Button AddCompactBtn(Control parent, string text, int width, Action act)
+        {
+            var b = new Button { Text = text, Width = width, Height = 28, Margin = new Padding(0, 0, 5, 0) };
+            Theme.Secondary(b);
+            b.Click += (s, e) =>
+            {
+                try { if (act != null) act(); }
+                catch (Exception ex) { AppendLog("ОШИБКА: " + ex); AppDialog.Error(this, "Ошибка", ex.Message); }
+            };
+            parent.Controls.Add(b);
+            return b;
+        }
+
+        private void LayoutCommandBar(Panel top, Panel profileBox)
+        {
+            if (top == null || _btnPreview == null) return;
+            int right = top.ClientSize.Width - 12;
+            _status.Left = right - _status.Width;
+            _btnStop.Left = _status.Left - 8 - _btnStop.Width;
+            _btnRun.Left = _btnStop.Left - 8 - _btnRun.Width;
+            _btnPreview.Left = _btnRun.Left - 8 - _btnPreview.Width;
+            _btnPreview.Top = _btnRun.Top = _btnStop.Top = 27;
+            _status.Top = 29;
+
+            // На узком окне поле пакетов заканчивается перед блоком действий.
+            int packageRight = Math.Max(500, _btnPreview.Left - 16);
+            _pkgBox.Width = Math.Max(180, packageRight - _pkgBox.Left);
+            _excluded.Width = Math.Max(200, top.ClientSize.Width - 24);
+            _fstecProgressLabel.Left = Math.Max(520, top.ClientSize.Width - 274);
+            _fstecProgressLabel.Width = Math.Max(150, top.ClientSize.Width - _fstecProgressLabel.Left - 12);
+            _fstecProgress.Width = Math.Max(300, _fstecProgressLabel.Left - 24);
+        }
+
+        private void ToggleLogPanel()
+        {
+            if (_contentSplit == null) return;
+            bool show = _contentSplit.Panel2Collapsed;
+            _contentSplit.Panel2Collapsed = !show;
+            _btnToggleLog.Text = show ? "Скрыть журнал" : "Показать журнал";
+        }
+
+        private void ApplyInitialWorkspaceLayout()
+        {
+            if (_workspaceSplit != null && _workspaceSplit.Width > 700)
+            {
+                _workspaceSplit.Panel1MinSize = 280;
+                _workspaceSplit.Panel2MinSize = 520;
+                _workspaceSplit.SplitterDistance = Math.Min(348, _workspaceSplit.Width - _workspaceSplit.Panel2MinSize - _workspaceSplit.SplitterWidth);
+            }
+            if (_contentSplit != null && _contentSplit.Height > 420)
+            {
+                _contentSplit.Panel1MinSize = 220;
+                _contentSplit.Panel2MinSize = 120;
+                int desired = (int)(_contentSplit.Height * 0.66);
+                _contentSplit.SplitterDistance = Math.Min(desired, _contentSplit.Height - _contentSplit.Panel2MinSize - _contentSplit.SplitterWidth);
+            }
         }
         private void AddCol(string name, string header, int w)
         {

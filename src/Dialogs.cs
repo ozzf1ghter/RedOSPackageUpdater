@@ -143,6 +143,7 @@ namespace RedOSPackageUpdater
                 var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Width = 90, Top = size.Height - 40, Left = size.Width - 200 };
                 var cancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Width = 90, Top = size.Height - 40, Left = size.Width - 100 };
                 f.Controls.AddRange(new Control[] { lbl, tb, ok, cancel });
+                Theme.Dialog(f);
                 f.AcceptButton = multiline ? null : ok; f.CancelButton = cancel;
                 return f.ShowDialog() == DialogResult.OK ? tb.Text : null;
             }
@@ -188,6 +189,7 @@ namespace RedOSPackageUpdater
                 Result = new Node { Name = _name.Text.Trim(), Host = _host.Text.Trim(), Port = (int)_port.Value, Role = _role.Text.Trim(), Enabled = _enabled.Checked };
             };
             Controls.AddRange(new Control[] { _name, _host, _port, _role, _enabled, ok, cancel });
+            Theme.Dialog(this);
             AcceptButton = ok; CancelButton = cancel;
         }
         private void AddLbl(string t, int top) { Controls.Add(new Label { Text = t, Left = 12, Top = top + 2, Width = 95 }); }
@@ -212,6 +214,7 @@ namespace RedOSPackageUpdater
             var cancel = new Button { Text = "Отмена", Width = 100, Top = 332, Left = 360, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) => { Result = Parse(_tb.Text); };
             Controls.AddRange(new Control[] { lbl, _tb, ok, cancel });
+            Theme.Dialog(this);
             AcceptButton = ok; CancelButton = cancel;
         }
 
@@ -271,10 +274,10 @@ namespace RedOSPackageUpdater
 
         public CredentialsForm(List<Credential> pool)
         {
-            Text = "Пул учёток (перебор и кеширование по узлам)";
+            Text = "Учётные записи SSH";
             StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(480, 400);
 
-            var info = new Label { Text = "Пароли скрыты. Одинаковые (логин+пароль) не дублируются. Логин по умолчанию root.", Left = 10, Top = 6, Width = 460, Height = 30 };
+            var info = new Label { Text = "Программа последовательно проверяет учётные записи и запоминает подходящую для каждого узла. Пароли всегда скрыты.", Left = 10, Top = 6, Width = 460, Height = 34 };
             _grid = new DataGridView { Left = 10, Top = 40, Width = 460, Height = 280, AllowUserToAddRows = true, AllowUserToDeleteRows = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect };
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Логин", Name = "user", FillWeight = 30 });
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Пароль", Name = "pass", FillWeight = 70 });
@@ -299,7 +302,7 @@ namespace RedOSPackageUpdater
             if (pool != null)
                 foreach (var c in pool) AddCred(c.User, c.Password);
 
-            var bulk = new Button { Text = "Массовый ввод паролей", Left = 10, Top = 332, Width = 200 };
+            var bulk = new Button { Text = "Добавить несколько", Left = 10, Top = 332, Width = 160 };
             bulk.Click += (s, e) =>
             {
                 string txt = Prompt.Show("Пароли", "Каждая строка - пароль, либо 'логин:пароль' (по умолчанию логин root):", "", true, new Size(420, 320));
@@ -313,7 +316,7 @@ namespace RedOSPackageUpdater
                     AddCred(user, pass);   // дубль просто не добавится
                 }
             };
-            var ok = new Button { Text = "OK", Width = 90, Top = 360, Left = 280, DialogResult = DialogResult.OK };
+            var ok = new Button { Text = "Сохранить", Width = 100, Top = 360, Left = 270, DialogResult = DialogResult.OK };
             var cancel = new Button { Text = "Отмена", Width = 90, Top = 360, Left = 380, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) =>
             {
@@ -331,6 +334,7 @@ namespace RedOSPackageUpdater
                 }
             };
             Controls.AddRange(new Control[] { info, _grid, bulk, ok, cancel });
+            Theme.Dialog(this);
             AcceptButton = null; CancelButton = cancel;
         }
 
@@ -381,6 +385,7 @@ namespace RedOSPackageUpdater
                 if (Scripts.Count == 0) { MessageBox.Show("Укажите хотя бы один скрипт"); DialogResult = DialogResult.None; return; }
             };
             Controls.AddRange(new Control[] { ok, cancel });
+            Theme.Dialog(this);
             AcceptButton = null; CancelButton = cancel;
         }
     }
@@ -397,20 +402,25 @@ namespace RedOSPackageUpdater
             _src = s;
             Text = "Настройки";
             FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ClientSize = new Size(440, 372);
-            int y = 12;
-            _par = Row("Параллельно (потоков):", s.MaxParallel, 1, 100, ref y);
-            _conn = Row("Таймаут подключения, c:", s.ConnectTimeoutSec, 1, 120, ref y);
-            _updto = Row("Таймаут обновления (yum), c:", s.UpdateTimeoutSec > 0 ? s.UpdateTimeoutSec : 1800, 60, 14400, ref y);
-            _initDelay = Row("Пауза после reboot, c:", s.InitialRebootDelaySec, 0, 120, ref y);
-            _up = Row("Ожидание возврата после reboot, c:", s.UpTimeoutSec, 30, 3600, ref y);
-            _stopto = Row("Таймаут остановки сервиса, c:", s.StopServiceTimeoutSec, 5, 600, ref y);
-            _authDelay = Row("Пауза между паролями, мс:", s.AuthRetryDelayMs, 0, 10000, ref y);
-            _maxAuth = Row("Лимит попыток паролей (0=все):", s.MaxAuthAttempts, 0, 50, ref y);
-            _backupKeep = Row("Хранить бэкапов на хосте:", s.BackupKeep, 1, 50, ref y);
+            MaximizeBox = false; MinimizeBox = false; ClientSize = new Size(460, 438);
+            int y = 10;
+            Section("Выполнение", ref y);
+            _par = Row("Одновременных узлов", s.MaxParallel, 1, 100, ref y);
+            _conn = Row("Подключение по SSH", s.ConnectTimeoutSec, 1, 120, ref y, "сек.");
+            _updto = Row("Операция yum/dnf", s.UpdateTimeoutSec > 0 ? s.UpdateTimeoutSec : 1800, 60, 14400, ref y, "сек.");
 
-            var ok = new Button { Text = "OK", Width = 90, Top = y + 8, Left = 230, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Отмена", Width = 90, Top = y + 8, Left = 330, DialogResult = DialogResult.Cancel };
+            Section("Перезагрузка и сервисы", ref y);
+            _initDelay = Row("Пауза после команды reboot", s.InitialRebootDelaySec, 0, 120, ref y, "сек.");
+            _up = Row("Ожидание возврата узла", s.UpTimeoutSec, 30, 3600, ref y, "сек.");
+            _stopto = Row("Остановка сервиса", s.StopServiceTimeoutSec, 5, 600, ref y, "сек.");
+
+            Section("Доступ и хранение", ref y);
+            _authDelay = Row("Пауза между паролями", s.AuthRetryDelayMs, 0, 10000, ref y, "мс");
+            _maxAuth = Row("Попыток авторизации (0 — все)", s.MaxAuthAttempts, 0, 50, ref y);
+            _backupKeep = Row("Бэкапов на узле", s.BackupKeep, 1, 50, ref y, "шт.");
+
+            var ok = new Button { Text = "Сохранить", Width = 104, Top = y + 10, Left = 234, DialogResult = DialogResult.OK };
+            var cancel = new Button { Text = "Отмена", Width = 96, Top = y + 10, Left = 348, DialogResult = DialogResult.Cancel };
             ok.Click += (s2, e) => Result = new AppSettings
             {
                 MaxParallel = (int)_par.Value, ConnectTimeoutSec = (int)_conn.Value, InitialRebootDelaySec = (int)_initDelay.Value,
@@ -419,13 +429,28 @@ namespace RedOSPackageUpdater
                 UpdateTimeoutSec = (int)_updto.Value
             };
             Controls.AddRange(new Control[] { ok, cancel });
+            Theme.Dialog(this);
             AcceptButton = ok; CancelButton = cancel;
         }
+        private void Section(string title, ref int y)
+        {
+            var label = Theme.SectionLabel(title);
+            label.Left = 14; label.Top = y; label.Width = 420; label.Height = 24;
+            Controls.Add(label); y += 26;
+        }
+
         private NumericUpDown Row(string label, int val, int min, int max, ref int y)
         {
-            Controls.Add(new Label { Text = label, Left = 12, Top = y + 2, Width = 250 });
-            var n = new NumericUpDown { Left = 270, Top = y, Width = 120, Minimum = min, Maximum = max, Value = Math.Min(Math.Max(val, min), max) };
-            Controls.Add(n); y += 34; return n;
+            return Row(label, val, min, max, ref y, null);
+        }
+
+        private NumericUpDown Row(string label, int val, int min, int max, ref int y, string unit)
+        {
+            Controls.Add(new Label { Text = label, Left = 22, Top = y + 4, Width = 245 });
+            var n = new NumericUpDown { Left = 280, Top = y, Width = 112, Minimum = min, Maximum = max, Value = Math.Min(Math.Max(val, min), max) };
+            Controls.Add(n);
+            if (!string.IsNullOrEmpty(unit)) Controls.Add(new Label { Text = unit, Left = 400, Top = y + 4, Width = 42, ForeColor = Theme.Muted });
+            y += 30; return n;
         }
     }
 }
