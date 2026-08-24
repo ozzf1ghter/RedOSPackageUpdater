@@ -83,6 +83,45 @@ namespace RedOSPackageUpdater
         }
     }
 
+    internal sealed class UpdateProgressDialog : Form
+    {
+        private readonly ProgressBar _bar;
+        private readonly Label _details;
+
+        public UpdateProgressDialog()
+        {
+            Text = "Обновление программы";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            StartPosition = FormStartPosition.CenterParent;
+            MinimizeBox = false; MaximizeBox = false; ControlBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(460, 138);
+            BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
+            var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
+            var title = new Label { Left = 22, Top = 18, Width = 416, Height = 24, Text = "Скачивание новой версии...", Font = Theme.UiFontBold };
+            _bar = new ProgressBar { Left = 22, Top = 52, Width = 416, Height = 18, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 24 };
+            _details = new Label { Left = 22, Top = 82, Width = 416, Height = 26, Text = "Подключение к GitHub...", ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft };
+            var hint = new Label { Left = 22, Top = 111, Width = 416, Height = 18, Text = "После проверки файл будет установлен автоматически.", ForeColor = Theme.Muted };
+            Controls.AddRange(new Control[] { stripe, title, _bar, _details, hint });
+        }
+
+        public void SetProgress(long done, long total)
+        {
+            if (total > 0)
+            {
+                int percent = (int)Math.Min(100, done * 100 / total);
+                _bar.Style = ProgressBarStyle.Continuous;
+                _bar.Value = percent;
+                _details.Text = string.Format("{0}%  —  {1:0.0} из {2:0.0} МБ", percent, done / 1048576d, total / 1048576d);
+            }
+            else
+            {
+                _bar.Style = ProgressBarStyle.Marquee;
+                _details.Text = string.Format("Загружено {0:0.0} МБ", done / 1048576d);
+            }
+        }
+    }
+
     // Универсальный ввод строки/многострочный.
     internal static class Prompt
     {

@@ -289,6 +289,7 @@ namespace RedOSPackageUpdater
         {
             if (_updateCheckRunning) return;
             _updateCheckRunning = true;
+            UpdateProgressDialog updateProgress = null;
             try
             {
                 if (!silent) SetStatus("Проверка версии...");
@@ -302,30 +303,27 @@ namespace RedOSPackageUpdater
                 string message = "Доступна версия " + info.VersionText + ".\n\nСкачать и установить?";
                 if (!AppDialog.Confirm(this, "Доступно обновление", message, "Обновить")) return;
                 SetStatus("Скачивание обновления...");
-                _excluded.Visible = false;
-                _fstecProgress.Style = ProgressBarStyle.Continuous;
-                _fstecProgress.Value = 0;
-                _fstecProgress.Visible = true;
-                _fstecProgressLabel.Text = "Обновление: подключение...";
-                _fstecProgressLabel.Visible = true;
+                updateProgress = new UpdateProgressDialog();
+                Enabled = false;
+                updateProgress.Show(this);
+                updateProgress.Refresh();
+                var progressWindow = updateProgress;
                 string downloaded = await Task.Run(() => AppUpdater.Download(info, (done, total) =>
                 {
                     if (IsDisposed) return;
-                    Ui(() =>
-                    {
-                        int percent = total > 0 ? (int)Math.Min(100, done * 100 / total) : 0;
-                        _fstecProgress.Value = percent;
-                        _fstecProgressLabel.Text = total > 0
-                            ? string.Format("Обновление: {0}%  ({1:0.0} / {2:0.0} МБ)", percent, done / 1048576d, total / 1048576d)
-                            : string.Format("Обновление: {0:0.0} МБ", done / 1048576d);
-                    });
+                    Ui(() => { if (!progressWindow.IsDisposed) progressWindow.SetProgress(done, total); });
                 }));
                 SetStatus("Установка обновления...");
+                updateProgress.Close();
+                updateProgress = null;
+                Enabled = true;
                 AppUpdater.InstallAndRestart(downloaded);
                 Close();
             }
             catch (Exception ex)
             {
+                if (updateProgress != null) { updateProgress.Dispose(); updateProgress = null; }
+                if (!IsDisposed) Enabled = true;
                 if (!silent) AppDialog.Error(this, "Ошибка обновления", ex.Message);
                 AppendLog("Ошибка проверки обновления: " + ex.Message);
             }
@@ -334,11 +332,10 @@ namespace RedOSPackageUpdater
                 _updateCheckRunning = false;
                 if (!IsDisposed && !Disposing)
                 {
-                    _fstecProgress.Visible = false;
-                    _fstecProgressLabel.Visible = false;
-                    _excluded.Visible = !_pkgBox.Visible;
+                    Enabled = true;
                     if (!_running) SetStatus("Готово");
                 }
+                if (updateProgress != null) updateProgress.Dispose();
             }
         }
 
