@@ -50,7 +50,11 @@ namespace RedOSPackageUpdater
             Version remote;
             if (!Version.TryParse(versionText, out remote)) throw new InvalidDataException("В update.json указана некорректная версия");
             if (string.IsNullOrEmpty(sha) || sha.Length != 64) throw new InvalidDataException("В update.json отсутствует SHA-256");
-            return new UpdateInfo { Version = remote, VersionText = versionText, Sha256 = sha.ToLowerInvariant(), IsNewer = remote > new Version(CurrentVersion) };
+            sha = sha.ToLowerInvariant();
+            Version current = new Version(CurrentVersion);
+            string currentHash = remote == current ? FileSha256(Process.GetCurrentProcess().MainModule.FileName) : null;
+            bool newer = UpdatePolicy.IsAvailable(remote, current, sha, currentHash);
+            return new UpdateInfo { Version = remote, VersionText = versionText, Sha256 = sha, IsNewer = newer };
         }
 
         public static string Download(UpdateInfo info, Action<long, long> progress)
@@ -164,6 +168,13 @@ namespace RedOSPackageUpdater
             using (var stream = File.OpenRead(path))
                 if (stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
                     throw new InvalidDataException("Загруженный файл не является Windows-программой");
+        }
+
+        private static string FileSha256(string path)
+        {
+            using (var hash = SHA256.Create())
+            using (var stream = File.OpenRead(path))
+                return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
         }
     }
 }

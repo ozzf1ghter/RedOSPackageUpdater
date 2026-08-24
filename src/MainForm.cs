@@ -998,42 +998,14 @@ namespace RedOSPackageUpdater
         {
             try
             {
-                BduFindingEnricher.Enrich(results);
-                int linuxAdded = FstecLinuxCatalog.Enrich(results);
-                const string header = "Система;Узел;Host;Источник;Тип определения;Диапазон ФСТЭК;Идентификатор;Связанные CVE;Все алиасы;Пакет;Установленная версия;Исправленная версия;Исправление доступно;Критичность;Дата публикации;Дата изменения;Описание;Основная ссылка;Дополнительные ссылки";
-                var fstec = new StringBuilder();
-                var all = new StringBuilder();
-                fstec.AppendLine(header); all.AppendLine(header);
-                foreach (var r in results)
-                    foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
-                    {
-                        if (string.IsNullOrEmpty(v.Id)) continue;
-                        bool isBdu = v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase);
-                        string source = VulnerabilitySource(v);
-                        var relatedCves = RelatedCves(v);
-                        string primaryUrl = VulnerabilityUrl(v);
-                        var row = new StringBuilder();
-                        row.Append(Csv(r.System)).Append(';').Append(Csv(r.Name)).Append(';').Append(Csv(r.Host)).Append(';')
-                          .Append(Csv(source)).Append(';').Append(Csv(string.Equals(v.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ? "Общий продукт Linux" : "Пакет RED OS")).Append(';')
-                          .Append(Csv(v.AffectedRange)).Append(';').Append(Csv(v.Id)).Append(';').Append(Csv(string.Join(", ", relatedCves.ToArray()))).Append(';')
-                          .Append(Csv(string.Join(", ", (v.Aliases ?? new List<string>()).ToArray()))).Append(';')
-                          .Append(Csv(v.Package)).Append(';').Append(Csv(v.InstalledVersion)).Append(';')
-                          .Append(Csv(v.FixedVersion)).Append(';').Append(Csv(string.IsNullOrWhiteSpace(v.FixedVersion) ? "нет" : "да")).Append(';')
-                          .Append(Csv(v.Severity)).Append(';').Append(Csv(v.PublishedDate)).Append(';').Append(Csv(v.LastModifiedDate)).Append(';')
-                          .Append(Csv(v.Title)).Append(';').Append(Csv(primaryUrl)).Append(';')
-                          .Append(Csv(string.Join(" | ", (v.References ?? new List<string>()).ToArray()))).AppendLine();
-                        all.Append(row);
-                        if (isBdu) fstec.Append(row);
-                    }
-                File.WriteAllText(Path.Combine(logDir, "fstec_vulnerabilities.csv"), fstec.ToString(), new UTF8Encoding(true));
-                File.WriteAllText(Path.Combine(logDir, "all_vulnerabilities.csv"), all.ToString(), new UTF8Encoding(true));
+                VulnerabilityReportOutput output = VulnerabilityReportService.WriteCsv(logDir, results);
                 string htmlPath = Path.Combine(logDir, "fstec_report.html");
                 File.WriteAllText(htmlPath, BuildVulnerabilityHtml(results), new UTF8Encoding(false));
                 _lastReportDir = logDir;
-                AppendLog("Отчёт ФСТЭК: " + Path.Combine(logDir, "fstec_vulnerabilities.csv"));
-                AppendLog("Расширенный отчёт: " + Path.Combine(logDir, "all_vulnerabilities.csv"));
+                AppendLog("Отчёт ФСТЭК: " + output.FstecCsvPath);
+                AppendLog("Расширенный отчёт: " + output.AllCsvPath);
                 AppendLog("HTML-отчёт: " + htmlPath);
-                if (linuxAdded > 0) AppendLog("Дополнительная проверка общего продукта Linux: добавлено " + linuxAdded + " находок по версии работающего ядра");
+                if (output.LinuxFindingsAdded > 0) AppendLog("Дополнительная проверка общего продукта Linux: добавлено " + output.LinuxFindingsAdded + " находок по версии работающего ядра");
             }
             catch (Exception ex) { AppendLog("Не удалось сформировать отчёт ФСТЭК: " + ex.Message); }
         }
@@ -1077,8 +1049,8 @@ namespace RedOSPackageUpdater
                 foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
                 {
                     if (string.IsNullOrEmpty(v.Id) || !v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) continue;
-                    var cves = RelatedCves(v);
-                    string url = VulnerabilityUrl(v);
+                    var cves = VulnerabilityReportService.RelatedCves(v);
+                    string url = VulnerabilityReportService.PrimaryUrl(v);
                     bool hasFix = !string.IsNullOrWhiteSpace(v.FixedVersion);
                     h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.PublishedDate)).Append("</td><td>").Append(H(v.LastModifiedDate)).Append("</td><td>")
                      .Append(string.Equals(v.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ? "<span class='tag'>Общий продукт Linux</span><br>Диапазон ФСТЭК: " + H(v.AffectedRange) + "<br>" : "")
@@ -1095,47 +1067,7 @@ namespace RedOSPackageUpdater
 
         private static string NodeLabel(string name, string host)
         {
-            name = (name ?? "").Trim();
-            host = (host ?? "").Trim();
-            if (name.Length == 0) return host;
-            if (host.Length == 0 || string.Equals(name, host, StringComparison.OrdinalIgnoreCase)) return name;
-            return name + " (" + host + ")";
-        }
-
-        private static string VulnerabilitySource(VulnerabilityFinding finding)
-        {
-            if (finding.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) return "БДУ ФСТЭК";
-            if (finding.Id.StartsWith("ROS-", StringComparison.OrdinalIgnoreCase)) return "RED OS";
-            return "Trivy/CVE";
-        }
-
-        private static string VulnerabilityUrl(VulnerabilityFinding finding)
-        {
-            if (!string.IsNullOrWhiteSpace(finding.PrimaryUrl)) return finding.PrimaryUrl.Trim();
-            return finding.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)
-                ? "https://bdu.fstec.ru/vul/" + finding.Id.Substring(4)
-                : "";
-        }
-
-        private static List<string> RelatedCves(VulnerabilityFinding finding)
-        {
-            var result = new List<string>();
-            if (finding.Id.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) AddUnique(result, finding.Id);
-            foreach (string alias in finding.Aliases ?? new List<string>())
-                if (!string.IsNullOrWhiteSpace(alias) && alias.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) AddUnique(result, alias);
-            foreach (string reference in finding.References ?? new List<string>())
-                foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(reference ?? "", "CVE-[0-9]{4}-[0-9]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                    AddUnique(result, match.Value);
-            return result;
-        }
-
-        private static void AddUnique(List<string> values, string value)
-        {
-            value = (value ?? "").Trim().ToUpperInvariant();
-            if (value.Length == 0) return;
-            foreach (string existing in values)
-                if (string.Equals(existing, value, StringComparison.OrdinalIgnoreCase)) return;
-            values.Add(value);
+            return HostIdentity.Label(name, host);
         }
 
         private void UpdateVulnerabilityDb()
@@ -1146,23 +1078,11 @@ namespace RedOSPackageUpdater
             {
                 try
                 {
-                    int lastPercent = -1;
-                    VulnerabilityDb.UpdateOnline((done, total) =>
+                    VulnerabilityDatabaseService.UpdateAll(progress =>
                     {
-                        int percent = total > 0 ? (int)(done * 100 / total) : -1;
-                        if (percent >= 0 && percent == lastPercent) return;
-                        lastPercent = percent;
-                        long doneMb = done / (1024 * 1024);
-                        long totalMb = total > 0 ? total / (1024 * 1024) : 0;
-                        Ui(() => UpdateVulnerabilityDbProgress(percent, doneMb, totalMb));
-                    }, token);
-                    lastPercent = -1;
-                    FstecLinuxCatalog.UpdateOnline((done, total) =>
-                    {
-                        int percent = total > 0 ? (int)(done * 100 / total) : -1;
-                        if (percent >= 0 && percent == lastPercent) return;
-                        lastPercent = percent;
-                        Ui(() => UpdateVulnerabilityDbProgress(percent, done / (1024 * 1024), total > 0 ? total / (1024 * 1024) : 0));
+                        Ui(() => UpdateVulnerabilityDbProgress(progress.Percent,
+                            progress.Done / (1024 * 1024), progress.Total > 0 ? progress.Total / (1024 * 1024) : 0,
+                            progress.Stage == VulnerabilityDatabaseStage.TrivyDatabase ? "База Trivy/БДУ" : "Каталог Linux ФСТЭК"));
                     }, token);
                     Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей и каталог общего продукта Linux успешно обновлены."); });
                 }
@@ -1182,19 +1102,19 @@ namespace RedOSPackageUpdater
             _fstecProgressLabel.Visible = true;
         }
 
-        private void UpdateVulnerabilityDbProgress(int percent, long doneMb, long totalMb)
+        private void UpdateVulnerabilityDbProgress(int percent, long doneMb, long totalMb, string stage)
         {
             if (percent >= 0)
             {
                 _fstecProgress.Style = ProgressBarStyle.Continuous;
                 _fstecProgress.Value = Math.Max(0, Math.Min(100, percent));
-                _fstecProgressLabel.Text = doneMb + " / " + totalMb + " МБ  (" + percent + "%)";
-                SetStatus("Загрузка базы ФСТЭК " + percent + "%");
+                _fstecProgressLabel.Text = stage + ": " + doneMb + " / " + totalMb + " МБ  (" + percent + "%)";
+                SetStatus(stage + " " + percent + "%");
             }
             else
             {
                 _fstecProgress.Style = ProgressBarStyle.Marquee;
-                _fstecProgressLabel.Text = doneMb + " МБ загружено";
+                _fstecProgressLabel.Text = stage + ": " + doneMb + " МБ загружено";
             }
         }
 
@@ -1213,9 +1133,7 @@ namespace RedOSPackageUpdater
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
-                    if (string.Equals(Path.GetExtension(d.FileName), ".zip", StringComparison.OrdinalIgnoreCase))
-                        FstecLinuxCatalog.Import(d.FileName, CancellationToken.None);
-                    else VulnerabilityDb.Import(d.FileName);
+                    VulnerabilityDatabaseService.Import(d.FileName, CancellationToken.None);
                     RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей успешно импортирована.");
                 }
                 catch (Exception ex) { AppDialog.Error(this, "ФСТЭК", "Ошибка импорта:\n" + ex.Message); }

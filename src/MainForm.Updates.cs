@@ -30,7 +30,9 @@ namespace RedOSPackageUpdater
                     return;
                 }
 
-                string message = "Доступна версия " + info.VersionText + ".\n\nСкачать и установить?";
+                string message = info.Version == new Version(AppUpdater.CurrentVersion)
+                    ? "Доступна обновлённая сборка версии " + info.VersionText + ".\n\nСкачать и установить?"
+                    : "Доступна версия " + info.VersionText + ".\n\nСкачать и установить?";
                 if (!AppDialog.Confirm(this, "Доступно обновление", message, "Обновить")) return;
 
                 SetStatus("Скачивание обновления...");

@@ -46,7 +46,7 @@ namespace RedOSPackageUpdater
                 cfg = DeserializeConfig(File.ReadAllText(seedPathIfMissing, Encoding.UTF8));
 
             if (cfg == null) cfg = new AppConfig();
-            Normalize(cfg);
+            ConfigurationRules.Normalize(cfg);
             // расшифровать пароли пула из DPAPI. Password==null => расшифровать не удалось (чужой DPAPI):
             // тогда при сохранении НЕ перешифровываем, а сохраняем исходный EncPassword (иначе потеряем пароль).
             foreach (var c in cfg.Credentials)
@@ -63,52 +63,8 @@ namespace RedOSPackageUpdater
         {
             var cfg = DeserializeConfig(json);
             if (cfg == null) return null;
-            Normalize(cfg);
+            ConfigurationRules.Normalize(cfg);
             return cfg;
-        }
-
-        private static void Normalize(AppConfig cfg)
-        {
-            if (cfg.Settings == null) cfg.Settings = new AppSettings();
-            // JSON иногда правят вручную. Нулевые/отрицательные таймауты и параллелизм не должны
-            // превращать запуск в мгновенный отказ или бесконтрольное число потоков.
-            var d = new AppSettings();
-            if (cfg.Settings.MaxParallel < 1) cfg.Settings.MaxParallel = d.MaxParallel;
-            if (cfg.Settings.MaxParallel > 100) cfg.Settings.MaxParallel = 100;
-            if (cfg.Settings.ConnectTimeoutSec < 1) cfg.Settings.ConnectTimeoutSec = d.ConnectTimeoutSec;
-            if (cfg.Settings.ConnectTimeoutSec > 300) cfg.Settings.ConnectTimeoutSec = 300;
-            if (cfg.Settings.InitialRebootDelaySec < 0) cfg.Settings.InitialRebootDelaySec = d.InitialRebootDelaySec;
-            if (cfg.Settings.InitialRebootDelaySec > 3600) cfg.Settings.InitialRebootDelaySec = 3600;
-            if (cfg.Settings.DownWaitSec < 0) cfg.Settings.DownWaitSec = d.DownWaitSec;
-            if (cfg.Settings.DownWaitSec > 86400) cfg.Settings.DownWaitSec = 86400;
-            if (cfg.Settings.UpTimeoutSec < 30) cfg.Settings.UpTimeoutSec = d.UpTimeoutSec;
-            if (cfg.Settings.UpTimeoutSec > 86400) cfg.Settings.UpTimeoutSec = 86400;
-            if (cfg.Settings.StopServiceTimeoutSec < 5) cfg.Settings.StopServiceTimeoutSec = d.StopServiceTimeoutSec;
-            if (cfg.Settings.StopServiceTimeoutSec > 3600) cfg.Settings.StopServiceTimeoutSec = 3600;
-            if (cfg.Settings.AuthRetryDelayMs < 0) cfg.Settings.AuthRetryDelayMs = d.AuthRetryDelayMs;
-            if (cfg.Settings.AuthRetryDelayMs > 60000) cfg.Settings.AuthRetryDelayMs = 60000;
-            if (cfg.Settings.MaxAuthAttempts < 0) cfg.Settings.MaxAuthAttempts = 0;
-            if (cfg.Settings.MaxAuthAttempts > 1000) cfg.Settings.MaxAuthAttempts = 1000;
-            if (cfg.Settings.BackupKeep < 0) cfg.Settings.BackupKeep = d.BackupKeep;
-            if (cfg.Settings.BackupKeep > 100) cfg.Settings.BackupKeep = 100;
-            if (cfg.Settings.UpdateTimeoutSec < 60) cfg.Settings.UpdateTimeoutSec = d.UpdateTimeoutSec;
-            if (cfg.Settings.UpdateTimeoutSec > 86400) cfg.Settings.UpdateTimeoutSec = 86400;
-            if (cfg.Credentials == null) cfg.Credentials = new List<Credential>();
-            if (cfg.Systems == null) cfg.Systems = new List<SubSystem>();
-            if (cfg.ExcludePackages == null) cfg.ExcludePackages = AppConfig.DefaultExcludePackages();
-            if (string.IsNullOrEmpty(cfg.RepoHost)) cfg.RepoHost = AppConfig.DefaultRepoHost;
-            if (cfg.RepoScripts == null || cfg.RepoScripts.Count == 0) cfg.RepoScripts = AppConfig.DefaultRepoScripts();
-            // null-элементы в массивах (битый/сторонний json: "Systems":[null], "Nodes":[null]) отсеиваем,
-            // иначе дальше по коду ловим NRE мимо защищённой ветки "битого конфига".
-            cfg.Credentials.RemoveAll(c => c == null);
-            cfg.Systems.RemoveAll(s => s == null);
-            foreach (var s in cfg.Systems)
-            {
-                if (s.Services == null) s.Services = new List<string>();
-                if (s.Nodes == null) s.Nodes = new List<Node>();
-                s.Nodes.RemoveAll(n => n == null);
-                foreach (var n in s.Nodes) if (n.Port <= 0) n.Port = 22;
-            }
         }
 
         private static AppConfig DeserializeConfig(string json)
@@ -120,7 +76,7 @@ namespace RedOSPackageUpdater
         public static void SaveConfig(AppConfig cfg)
         {
             if (cfg == null) throw new ArgumentNullException("cfg");
-            Normalize(cfg);
+            ConfigurationRules.Normalize(cfg);
             EnsureDirs();
             // зашифровать пароли пула в DPAPI, plain не пишем.
             // Если Password==null (не расшифровали при загрузке) - сохраняем исходный EncPassword, не затираем.
@@ -213,8 +169,6 @@ namespace RedOSPackageUpdater
                 catch (Exception ex) { LogStoreError("SaveCache", ex); }
             }
         }
-
-        public static string CacheKey(string host, int port) { return (host ?? "").Trim() + ":" + (port <= 0 ? 22 : port); }
 
         // ---- Known hosts (TOFU pinning SSH host-ключей) ----
         // Отпечаток host-ключа не секретен (это открытая часть ключа сервера), поэтому файл
@@ -322,7 +276,7 @@ namespace RedOSPackageUpdater
             if (b.Credentials != null)
                 foreach (var ce in b.Credentials)
                     cfg.Credentials.Add(new Credential { User = string.IsNullOrEmpty(ce.User) ? "root" : ce.User, Password = ce.Password });
-            Normalize(cfg);
+            ConfigurationRules.Normalize(cfg);
             return cfg;
         }
 

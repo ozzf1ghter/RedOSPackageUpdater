@@ -104,29 +104,7 @@ namespace RedOSPackageUpdater
         // не хотим тихо терять узел из отчёта о батче).
         private static void RunParallel<T>(IEnumerable<T> items, int maxPar, CancellationToken ct, Action<T> body, Action<T, Exception> onError = null)
         {
-            maxPar = Math.Max(1, maxPar);
-            using (var sem = new SemaphoreSlim(maxPar))
-            {
-                var tasks = new List<Task>();
-                foreach (var it in items)
-                {
-                    if (ct.IsCancellationRequested) break;
-                    var item = it;
-                    try { sem.Wait(ct); }   // слот берём ДО создания задачи; при отмене выходим сразу
-                    catch (OperationCanceledException) { break; }
-                    // LongRunning: SSH-операция блокирующая и долгая (до часов), не занимаем поток пула
-                    tasks.Add(Task.Factory.StartNew(() =>
-                    {
-                        try { if (!ct.IsCancellationRequested) body(item); }
-                        catch (Exception ex)
-                        {
-                            if (onError != null) { try { onError(item, ex); } catch { } }
-                        }
-                        finally { sem.Release(); }
-                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default));
-                }
-                Task.WaitAll(tasks.ToArray());
-            }
+            ParallelBatch.Run(items, maxPar, ct, body, onError);
         }
 
         // ---- Точка входа: параллельный прогон обновления ----
@@ -150,7 +128,8 @@ namespace RedOSPackageUpdater
             {
                 System = t.System != null ? t.System.Name : "",
                 Name = t.Node.Name, Host = t.Node.Host,
-                Status = HostStatus.Fail, Note = "внутренняя ошибка обработки узла: " + ex.Message
+                Status = ex is OperationCanceledException ? HostStatus.Warn : HostStatus.Fail,
+                Note = ex is OperationCanceledException ? "отменено пользователем" : "внутренняя ошибка обработки узла: " + ex.Message
             };
             if (OnLog != null) OnLog(t.Node.Host, "ИСКЛЮЧЕНИЕ вне обработки узла: " + ex);
             if (OnHostDone != null) OnHostDone(r);
@@ -194,12 +173,7 @@ namespace RedOSPackageUpdater
 
         private static string NodeLabel(string name, string host)
         {
-            name = name ?? "";
-            host = host ?? "";
-            name = name.Trim(); host = host.Trim();
-            if (name.Length == 0) return host;
-            if (host.Length == 0 || string.Equals(name, host, StringComparison.OrdinalIgnoreCase)) return name;
-            return name + " (" + host + ")";
+            return HostIdentity.Label(name, host);
         }
 
         // Логгер конкретного узла: пишет в его лог-файл на диске и одновременно шлёт строку в
@@ -734,18 +708,11 @@ namespace RedOSPackageUpdater
             HostResult res, CancellationToken ct, out Credential used)
         {
             used = null;
-            string key = Store.CacheKey(node.Host, node.Port <= 0 ? 22 : node.Port);
-            var candidates = new List<Credential>();
+            string key = HostIdentity.CacheKey(node.Host, node.Port);
             CachedCred cached = null;
             lock (_cacheLock) { _cache.TryGetValue(key, out cached); }
-            if (cached != null)
-                candidates.Add(new Credential { User = cached.User, Password = cached.Password });
-            foreach (var c in _pool)
-            {
-                if (cached != null && c.User == cached.User && c.Password == cached.Password) continue;
-                candidates.Add(new Credential { User = c.User, Password = c.Password });
-            }
-            if (candidates.Count == 0) { res.Note = "пул учёток пуст"; return null; }
+            var candidates = CredentialCandidates.Build(_pool, cached);
+            if (candidates.Count == 0) { res.Note = "нет доступных учёток (пул пуст либо пароли не удалось расшифровать)"; return null; }
 
             int attempts = 0;
             bool anyAuthFail = false;
@@ -757,7 +724,7 @@ namespace RedOSPackageUpdater
 
                 var cand = candidates[i];
                 attempts++;
-                bool wasCached = (cached != null && i == 0);
+                bool wasCached = cached != null && string.Equals(cand.User, (cached.User ?? "").Trim(), StringComparison.Ordinal) && cand.Password == cached.Password;
                 try
                 {
                     var client = ConnectWith(node, cand, opt.Settings.ConnectTimeoutSec);
@@ -813,7 +780,7 @@ namespace RedOSPackageUpdater
                 // соединение обрывается, а не тихо продолжается с новым (возможно подменённым) ключом.
                 client.HostKeyReceived += (s, e) =>
                 {
-                    string key = Store.CacheKey(node.Host, node.Port <= 0 ? 22 : node.Port);
+                    string key = HostIdentity.CacheKey(node.Host, node.Port);
                     string fp = e.FingerPrintSHA256;
                     lock (_knownHostsLock)
                     {
@@ -877,7 +844,7 @@ namespace RedOSPackageUpdater
             {
                 sftp.HostKeyReceived += (s, e) =>
                 {
-                    string key = Store.CacheKey(node.Host, node.Port <= 0 ? 22 : node.Port);
+                    string key = HostIdentity.CacheKey(node.Host, node.Port);
                     lock (_knownHostsLock)
                     {
                         string known;
@@ -935,52 +902,7 @@ namespace RedOSPackageUpdater
         // Есть таймаут (timeoutSec): если команда зависла (yum lock, недоступный репозиторий) - прервётся.
         private string RunScript(SshClient client, string scriptContent, string envPrefix, int timeoutSec, Action<string> lineLog, CancellationToken ct)
         {
-            string content = scriptContent ?? "";
-            if (!string.IsNullOrEmpty(envPrefix)) content = envPrefix + content;
-            content = content.Replace("\r\n", "\n").Replace("\r", "\n");
-            string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
-            string cmd = "printf %s '" + b64 + "' | base64 -d | bash 2>&1";
-            var sb = new StringBuilder();
-            if (timeoutSec <= 0) timeoutSec = 1800;
-            using (var command = client.CreateCommand(cmd))
-            {
-                // CommandTimeout выставлен для порядка/на случай будущих версий SSH.NET, но фактическую
-                // защиту от зависания даёт watchdog-таймер ниже: при потоковом BeginExecute+ReadLine
-                // библиотека не обрывает "немое" зависание (канал жив, вывода просто нет) по этому таймауту.
-                command.CommandTimeout = TimeSpan.FromSeconds(timeoutSec);
-                IAsyncResult ar = command.BeginExecute();
-                int timedOut = 0;
-                int cancelled = 0;
-                int finishedReading = 0;   // Interlocked/Volatile: переменная читается timer- и SSH-потоками
-                // Watchdog: при "немом" зависании (TCP жив, вывода нет) ReadLine блокируется и CommandTimeout
-                // не срабатывает - принудительно обрываем команду по таймауту, чтобы не держать поток вечно.
-                using (var watchdog = new Timer(delegate {
-                    try { if (Volatile.Read(ref finishedReading) == 0 && !ar.IsCompleted) { Interlocked.Exchange(ref timedOut, 1); command.CancelAsync(); } } catch { }
-                }, null, timeoutSec * 1000, System.Threading.Timeout.Infinite))
-                // Отмена пользователем ("Стоп") реально прерывает выполняющуюся команду, а не ждёт таймаут.
-                using (ct.Register(() => { try { if (!ar.IsCompleted) { Interlocked.Exchange(ref cancelled, 1); command.CancelAsync(); } } catch { } }))
-                using (var reader = new StreamReader(command.OutputStream, Encoding.UTF8))
-                {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (line.IndexOf('\r') >= 0) line = line.Substring(line.LastIndexOf('\r') + 1);
-                        sb.Append(line).Append('\n');
-                        if (lineLog != null) lineLog(line);
-                    }
-                    Volatile.Write(ref finishedReading, 1);
-                    // EndExecute зовём ДО закрытия reader/OutputStream: иначе на уже освобождённом
-                    // канале он может бросить и мы ложно пометим удачный прогон как [TIMEOUT_OR_ERROR].
-                    try { command.EndExecute(ar); }
-                    catch (Exception ex)
-                    {
-                        string msg = Volatile.Read(ref cancelled) != 0 ? "отменено пользователем" : (Volatile.Read(ref timedOut) != 0 ? "превышен таймаут " + timeoutSec + " c" : ex.Message);
-                        if (lineLog != null) lineLog("[команда прервана: " + msg + "]");
-                        sb.Append("\n[TIMEOUT_OR_ERROR]");
-                    }
-                }
-            }
-            return sb.ToString();
+            return SshCommandRunner.Run(client, scriptContent, envPrefix, timeoutSec, lineLog, ct);
         }
 
         // Возвращает false, если команду reboot не удалось отправить (обрыв канала/таймаут) - раньше

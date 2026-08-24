@@ -24,7 +24,7 @@ namespace RedOSPackageUpdater
 
         public Node() { Port = 22; Enabled = true; Role = ""; }
 
-        [ScriptIgnore] public string Display { get { return string.IsNullOrEmpty(Name) ? Host : (Name + "  (" + Host + ")"); } }
+        [ScriptIgnore] public string Display { get { return HostIdentity.Label(Name, Host); } }
     }
 
     public class SubSystem

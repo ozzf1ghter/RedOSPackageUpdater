@@ -3,6 +3,8 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace RedOSPackageUpdater
 {
@@ -13,6 +15,120 @@ namespace RedOSPackageUpdater
         public static string InSingleQuotes(string value)
         {
             return (value ?? "").Replace("'", "'\"'\"'");
+        }
+    }
+
+    internal static class HostIdentity
+    {
+        public static string Label(string name, string host)
+        {
+            name = (name ?? "").Trim(); host = (host ?? "").Trim();
+            if (name.Length == 0) return host;
+            if (host.Length == 0 || string.Equals(name, host, StringComparison.OrdinalIgnoreCase)) return name;
+            return name + " (" + host + ")";
+        }
+
+        public static string CacheKey(string host, int port)
+        {
+            return (host ?? "").Trim() + ":" + (port <= 0 ? 22 : port);
+        }
+    }
+
+    internal static class ParallelBatch
+    {
+        public static void Run<T>(IEnumerable<T> source, int maxParallel, CancellationToken cancellation,
+            Action<T> body, Action<T, Exception> onError)
+        {
+            if (source == null) throw new ArgumentNullException("source");
+            if (body == null) throw new ArgumentNullException("body");
+            var tasks = new List<Task>();
+            using (var slots = new SemaphoreSlim(Math.Max(1, maxParallel)))
+            {
+                foreach (T item in new List<T>(source))
+                {
+                    if (cancellation.IsCancellationRequested)
+                    {
+                        NotifyError(onError, item, new OperationCanceledException(cancellation));
+                        continue;
+                    }
+                    try { slots.Wait(cancellation); }
+                    catch (OperationCanceledException ex) { NotifyError(onError, item, ex); continue; }
+                    T captured = item;
+                    tasks.Add(Task.Factory.StartNew(() =>
+                    {
+                        try
+                        {
+                            if (cancellation.IsCancellationRequested) throw new OperationCanceledException(cancellation);
+                            body(captured);
+                        }
+                        catch (Exception ex) { NotifyError(onError, captured, ex); }
+                        finally { slots.Release(); }
+                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default));
+                }
+                Task.WaitAll(tasks.ToArray());
+            }
+        }
+
+        private static void NotifyError<T>(Action<T, Exception> onError, T item, Exception error)
+        {
+            if (onError == null) return;
+            try { onError(item, error); } catch { }
+        }
+    }
+
+    internal static class CredentialCandidates
+    {
+        public static List<Credential> Build(IEnumerable<Credential> pool, CachedCred cached)
+        {
+            var result = new List<Credential>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            Add(result, seen, cached != null ? cached.User : null, cached != null ? cached.Password : null);
+            foreach (Credential credential in pool ?? new Credential[0])
+                if (credential != null) Add(result, seen, credential.User, credential.Password);
+            return result;
+        }
+
+        private static void Add(List<Credential> result, HashSet<string> seen, string user, string password)
+        {
+            user = (user ?? "").Trim();
+            if (user.Length == 0 || password == null) return;
+            string key = user + "\0" + password;
+            if (!seen.Add(key)) return;
+            result.Add(new Credential { User = user, Password = password });
+        }
+    }
+
+    internal static class FileSwap
+    {
+        public static void Replace(string source, string target)
+        {
+            if (string.IsNullOrWhiteSpace(source)) throw new ArgumentException("Не задан исходный файл", "source");
+            if (string.IsNullOrWhiteSpace(target)) throw new ArgumentException("Не задан целевой файл", "target");
+            string backup = target + ".old";
+            try
+            {
+                if (File.Exists(backup)) File.Delete(backup);
+                if (File.Exists(target)) File.Move(target, backup);
+                File.Move(source, target);
+            }
+            catch
+            {
+                if (!File.Exists(target) && File.Exists(backup)) File.Move(backup, target);
+                throw;
+            }
+            try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+        }
+    }
+
+    internal static class UpdatePolicy
+    {
+        public static bool IsAvailable(Version remoteVersion, Version currentVersion, string publishedHash, string currentHash)
+        {
+            if (remoteVersion == null) throw new ArgumentNullException("remoteVersion");
+            if (currentVersion == null) throw new ArgumentNullException("currentVersion");
+            if (remoteVersion > currentVersion) return true;
+            if (remoteVersion < currentVersion) return false;
+            return !string.Equals(publishedHash ?? "", currentHash ?? "", StringComparison.OrdinalIgnoreCase);
         }
     }
 

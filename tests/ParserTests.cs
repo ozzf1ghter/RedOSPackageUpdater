@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using RedOSPackageUpdater;
 
 internal static class ParserTests
@@ -53,6 +55,44 @@ internal static class ParserTests
         string matched;
         Check(FstecLinuxCatalog.Applies("6.1.175", new[] { "до 6.1.180" }, out matched), "диапазон общего продукта Linux");
         Check(!FstecLinuxCatalog.Applies("5.15.10", new[] { "до 6.1.180" }, out matched), "ветки ядра не смешиваются");
+
+        var brokenConfig = new AppConfig
+        {
+            Settings = new AppSettings { MaxParallel = 999, ConnectTimeoutSec = 0 },
+            Systems = new List<SubSystem> { null, new SubSystem { Nodes = new List<Node> { null, new Node { Host = " host ", Port = 70000 } } } },
+            Credentials = new List<Credential> { null }
+        };
+        ConfigurationRules.Normalize(brokenConfig);
+        Check(brokenConfig.Settings.MaxParallel == 100 && brokenConfig.Settings.ConnectTimeoutSec == 15, "границы настроек конфигурации");
+        Check(brokenConfig.Systems.Count == 1 && brokenConfig.Systems[0].Nodes.Count == 1 && brokenConfig.Systems[0].Nodes[0].Host == "host" && brokenConfig.Systems[0].Nodes[0].Port == 22, "нормализация узлов конфигурации");
+
+        var candidates = CredentialCandidates.Build(new[] {
+            new Credential { User = "root", Password = null },
+            new Credential { User = " root ", Password = "p" },
+            new Credential { User = "root", Password = "p" }
+        }, null);
+        Check(candidates.Count == 1 && candidates[0].User == "root", "невалидные и повторные учётки пропускаются");
+
+        var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        int bodies = 0, cancelledResults = 0;
+        ParallelBatch.Run(new[] { 1, 2, 3 }, 2, cancelled.Token, x => bodies++, (x, error) => { if (error is OperationCanceledException) cancelledResults++; });
+        Check(bodies == 0 && cancelledResults == 3, "отмена возвращает результат для каждой цели");
+
+        var reportFinding = new VulnerabilityFinding { Id = "BDU:2026-1", PrimaryUrl = "" };
+        reportFinding.Aliases.Add("cve-2026-5");
+        reportFinding.References.Add("https://example/CVE-2026-5/CVE-2026-6");
+        Check(VulnerabilityReportService.RelatedCves(reportFinding).Count == 2, "CVE отчёта объединяются без дублей");
+        Check(VulnerabilityReportService.Csv("a;\"b\"") == "\"a;\"\"b\"\"\"", "CSV корректно экранирует разделители и кавычки");
+
+        string secret = Crypto.EncryptPortable("данные", "достаточно-длинный-пароль");
+        Check(Crypto.DecryptPortable(secret, "достаточно-длинный-пароль") == "данные", "переносимое шифрование: круговой тест");
+        char replacement = secret[secret.Length - 2] == 'A' ? 'B' : 'A';
+        string tampered = secret.Substring(0, secret.Length - 2) + replacement + secret.Substring(secret.Length - 1);
+        bool tamperRejected = false;
+        try { Crypto.DecryptPortable(tampered, "достаточно-длинный-пароль"); } catch { tamperRejected = true; }
+        Check(tamperRejected, "изменённый экспорт отклоняется");
+        Check(UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "bb", "aa"), "обновлённая сборка той же версии обнаруживается по SHA-256");
+        Check(!UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "AA", "aa"), "та же сборка повторно не скачивается");
         return _failed == 0 ? 0 : 1;
     }
 }

@@ -51,7 +51,7 @@ namespace RedOSPackageUpdater
                     Download(FallbackUrl, zip, progress, ct);
                     ExtractCompactCatalog(zip, CatalogPath + ".tmp");
                 }
-                Replace(CatalogPath + ".tmp", CatalogPath);
+                FileSwap.Replace(CatalogPath + ".tmp", CatalogPath);
             }
             finally { TryDelete(zip); TryDelete(CatalogPath + ".tmp"); }
         }
@@ -73,7 +73,7 @@ namespace RedOSPackageUpdater
         {
             Directory.CreateDirectory(VulnerabilityDb.Dir);
             Build(zipPath, CatalogPath + ".tmp", ct);
-            Replace(CatalogPath + ".tmp", CatalogPath);
+            FileSwap.Replace(CatalogPath + ".tmp", CatalogPath);
         }
 
         public static int Enrich(List<HostResult> results)
@@ -89,13 +89,15 @@ namespace RedOSPackageUpdater
             int added = 0;
             foreach (HostResult host in results)
             {
+                if (host == null) continue;
+                if (host.Vulnerabilities == null) host.Vulnerabilities = new List<VulnerabilityFinding>();
                 string kernel = KernelVersion(host.OsInfo);
                 if (kernel.Length == 0) continue;
-                var known = new HashSet<string>((host.Vulnerabilities ?? new List<VulnerabilityFinding>()).Select(v => v.Id), StringComparer.OrdinalIgnoreCase);
+                var known = new HashSet<string>(host.Vulnerabilities.Where(v => v != null && !string.IsNullOrWhiteSpace(v.Id)).Select(v => v.Id), StringComparer.OrdinalIgnoreCase);
                 foreach (LinuxBduRecord record in catalog)
                 {
                     string range;
-                    if (known.Contains(record.Id) || !Applies(kernel, record.Versions, out range)) continue;
+                    if (record == null || string.IsNullOrWhiteSpace(record.Id) || known.Contains(record.Id) || !Applies(kernel, record.Versions, out range)) continue;
                     var finding = new VulnerabilityFinding
                     {
                         Id = record.Id, Package = "Linux (работающее ядро)", InstalledVersion = kernel,
@@ -181,14 +183,19 @@ namespace RedOSPackageUpdater
         private static int Compare(string a, string b)
         {
             MatchCollection x = Regex.Matches(a, "\\d+"), y = Regex.Matches(b, "\\d+");
-            for (int i = 0; i < Math.Max(x.Count, y.Count); i++) { int xv = i < x.Count ? int.Parse(x[i].Value) : 0, yv = i < y.Count ? int.Parse(y[i].Value) : 0; if (xv != yv) return xv.CompareTo(yv); }
+            for (int i = 0; i < Math.Max(x.Count, y.Count); i++)
+            {
+                long xv = 0, yv = 0;
+                if (i < x.Count) long.TryParse(x[i].Value, out xv);
+                if (i < y.Count) long.TryParse(y[i].Value, out yv);
+                if (xv != yv) return xv.CompareTo(yv);
+            }
             return 0;
         }
         private static string Severity(string s) { s = (s ?? "").ToLowerInvariant(); if (s.Contains("критическ")) return "CRITICAL"; if (s.Contains("высок")) return "HIGH"; if (s.Contains("средн")) return "MEDIUM"; if (s.Contains("низк")) return "LOW"; return "UNKNOWN"; }
         private static string Date(string s) { DateTime d; return DateTime.TryParse(s, out d) ? d.ToString("yyyy-MM-dd") : ""; }
         private static string Clean(string s) { return Regex.Replace((s ?? "").Trim(), "\\s+", " "); }
         private static void AddUnique(List<string> list, string value) { if (value.Length > 0 && !list.Any(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase))) list.Add(value); }
-        private static void Replace(string source, string target) { if (File.Exists(target)) File.Delete(target); File.Move(source, target); }
         private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
         private static void Download(string url, string path, Action<long, long> progress, CancellationToken ct)
         {
