@@ -20,7 +20,8 @@ namespace RedOSPackageUpdater
 
     internal static class AppUpdater
     {
-        public const string CurrentVersion = "1.0.0";
+        // Semantic Versioning: major.minor.patch. При выпуске менять вместе с update.json.
+        public const string CurrentVersion = "1.1.0";
         private const string Owner = "ozzf1ghter";
         private const string Repo = "RedOSPackageUpdater";
         public static UpdateInfo Check()
