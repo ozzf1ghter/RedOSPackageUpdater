@@ -1,0 +1,26 @@
+# Локальные результаты работы программы
+*.log
+preview_*/
+run_*/
+vuln_*/
+reports/
+_to_delete/
+
+# Временные файлы и резервные сборки
+*.tmp
+*.download
+*.old
+*.bak
+*.new.exe
+
+# IDE / компилятор
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+# Системные файлы
+Thumbs.db
+Desktop.ini
+.DS_Store

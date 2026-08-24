@@ -1,0 +1,487 @@
+{
+  "version": 1,
+  "settings": {
+    "maxParallel": 5,
+    "connectTimeoutSec": 15,
+    "initialRebootDelaySec": 15,
+    "downWaitSec": 180,
+    "upTimeoutSec": 900,
+    "stopServiceTimeoutSec": 120,
+    "authRetryDelayMs": 800,
+    "maxAuthAttempts": 0,
+    "backupKeep": 5
+  },
+  "credentials": [],
+  "systems": [
+    {
+      "name": "ICE АЦК-Планирование",
+      "services": [
+        "postgresql*",
+        "patroni",
+        "pgbouncer"
+      ],
+      "nodes": [
+        {
+          "name": "azk-p-sp01",
+          "host": "10.146.8.69",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sp02",
+          "host": "10.146.8.70",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sp03",
+          "host": "10.146.8.71",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sp04",
+          "host": "10.146.8.72",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sp05",
+          "host": "10.146.8.73",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sp06",
+          "host": "10.146.8.74",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sp07",
+          "host": "10.146.8.75",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-db01",
+          "host": "10.146.8.5",
+          "port": 22,
+          "role": "ice-db",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web01",
+          "host": "10.146.8.133",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web02",
+          "host": "10.146.8.134",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web03",
+          "host": "10.146.8.135",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web04",
+          "host": "10.146.8.136",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web05",
+          "host": "10.146.8.137",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web06",
+          "host": "10.146.8.138",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-web07",
+          "host": "10.146.8.139",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sig01",
+          "host": "10.146.8.76",
+          "port": 22,
+          "role": "sig",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sig02",
+          "host": "10.146.8.77",
+          "port": 22,
+          "role": "sig",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-ice-prv01",
+          "host": "10.146.8.78",
+          "port": 22,
+          "role": "ice-prv",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-exch01",
+          "host": "10.146.8.79",
+          "port": 22,
+          "role": "exch",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-sched01",
+          "host": "10.146.8.80",
+          "port": 22,
+          "role": "",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-lb01",
+          "host": "10.146.8.197",
+          "port": 22,
+          "role": "lb",
+          "enabled": true
+        },
+        {
+          "name": "azk-p-lb02",
+          "host": "10.146.8.198",
+          "port": 22,
+          "role": "lb",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "АЦК-Мониторинг",
+      "services": [
+        "postgresql*",
+        "patroni",
+        "pgbouncer"
+      ],
+      "nodes": [
+        {
+          "name": "azk-m-etl01",
+          "host": "10.146.8.230",
+          "port": 22,
+          "role": "etl",
+          "enabled": true
+        },
+        {
+          "name": "azk-m-db01",
+          "host": "10.146.8.231",
+          "port": 22,
+          "role": "db",
+          "enabled": true
+        },
+        {
+          "name": "azk-m-olap01",
+          "host": "10.146.8.232",
+          "port": 22,
+          "role": "olap",
+          "enabled": true
+        },
+        {
+          "name": "azk-m-dash01",
+          "host": "10.146.8.233",
+          "port": 22,
+          "role": "dash",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "ICE АЦК-Финансы",
+      "services": [
+        "postgresql*",
+        "patroni",
+        "pgbouncer"
+      ],
+      "nodes": [
+        {
+          "name": "azk-f-sp01",
+          "host": "10.146.9.69",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp02",
+          "host": "10.146.9.70",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp03",
+          "host": "10.146.9.71",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp04",
+          "host": "10.146.9.72",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp05",
+          "host": "10.146.9.73",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp06",
+          "host": "10.146.9.74",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp07",
+          "host": "10.146.9.75",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp08",
+          "host": "10.146.9.76",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp09",
+          "host": "10.146.9.77",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sp10",
+          "host": "10.146.9.78",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-exch01",
+          "host": "10.146.9.80",
+          "port": 22,
+          "role": "exch",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-exch02",
+          "host": "10.146.9.81",
+          "port": 22,
+          "role": "exch",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-exch03",
+          "host": "10.146.9.84",
+          "port": 22,
+          "role": "exch",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sig01",
+          "host": "10.146.9.82",
+          "port": 22,
+          "role": "sig",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-sig02",
+          "host": "10.146.9.83",
+          "port": 22,
+          "role": "sig",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-db01",
+          "host": "10.146.9.5",
+          "port": 22,
+          "role": "ice-db",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web01",
+          "host": "10.146.9.133",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web02",
+          "host": "10.146.9.134",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web03",
+          "host": "10.146.9.135",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web04",
+          "host": "10.146.9.136",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web05",
+          "host": "10.146.9.137",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web06",
+          "host": "10.146.9.138",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web07",
+          "host": "10.146.9.139",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web08",
+          "host": "10.146.9.140",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web09",
+          "host": "10.146.9.141",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-web10",
+          "host": "10.146.9.142",
+          "port": 22,
+          "role": "ice-web",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-ice-prv01",
+          "host": "10.146.9.79",
+          "port": 22,
+          "role": "ice-prv",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-lb01",
+          "host": "10.146.9.197",
+          "port": 22,
+          "role": "lb",
+          "enabled": true
+        },
+        {
+          "name": "azk-f-lb02",
+          "host": "10.146.9.198",
+          "port": 22,
+          "role": "lb",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "Бюджетный контроль",
+      "services": [
+        "postgresql*",
+        "patroni",
+        "pgbouncer"
+      ],
+      "nodes": [
+        {
+          "name": "azk-bc-db01",
+          "host": "192.168.35.157",
+          "port": 22,
+          "role": "db",
+          "enabled": true
+        },
+        {
+          "name": "azkbc-csp",
+          "host": "192.168.35.207",
+          "port": 22,
+          "role": "csp",
+          "enabled": true
+        },
+        {
+          "name": "azkbc-int",
+          "host": "192.168.35.210",
+          "port": 22,
+          "role": "int",
+          "enabled": true
+        },
+        {
+          "name": "azkbc-spf",
+          "host": "192.168.35.208",
+          "port": 22,
+          "role": "spf",
+          "enabled": true
+        },
+        {
+          "name": "azkbc-sp1",
+          "host": "192.168.34.170",
+          "port": 22,
+          "role": "sp",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "Тестовые серверы",
+      "services": [],
+      "nodes": []
+    },
+    {
+      "name": "Прочее",
+      "services": [],
+      "nodes": []
+    }
+  ]
+}
