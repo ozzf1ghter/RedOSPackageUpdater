@@ -29,6 +29,7 @@ namespace RedOSPackageUpdater
     internal static class FstecLinuxCatalog
     {
         private const string Url = "https://bdu.fstec.ru/files/documents/vulxml.zip";
+        private const string FallbackUrl = "https://raw.githubusercontent.com/ozzf1ghter/RedOSPackageUpdater/main/data/linux-bdu.zip";
         public static string CatalogPath { get { return Path.Combine(VulnerabilityDb.Dir, "linux-bdu.json"); } }
         public static bool Exists { get { return File.Exists(CatalogPath) && new FileInfo(CatalogPath).Length > 0; } }
 
@@ -38,11 +39,34 @@ namespace RedOSPackageUpdater
             string zip = Path.Combine(VulnerabilityDb.Dir, "vulxml.zip.download");
             try
             {
-                Download(zip, progress, ct);
-                Build(zip, CatalogPath + ".tmp", ct);
+                try
+                {
+                    Download(Url, zip, progress, ct);
+                    Build(zip, CatalogPath + ".tmp", ct);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch
+                {
+                    TryDelete(zip);
+                    Download(FallbackUrl, zip, progress, ct);
+                    ExtractCompactCatalog(zip, CatalogPath + ".tmp");
+                }
                 Replace(CatalogPath + ".tmp", CatalogPath);
             }
             finally { TryDelete(zip); TryDelete(CatalogPath + ".tmp"); }
+        }
+
+        private static void ExtractCompactCatalog(string zipPath, string output)
+        {
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            {
+                ZipArchiveEntry entry = archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+                if (entry == null || entry.Length < 1000) throw new InvalidDataException("В резервном архиве не найден каталог Linux");
+                using (Stream input = entry.Open()) using (var target = new FileStream(output, FileMode.Create, FileAccess.Write)) input.CopyTo(target);
+            }
+            var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            var records = serializer.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(output, Encoding.UTF8));
+            if (records == null || records.Count < 100) throw new InvalidDataException("Резервный каталог Linux пуст или повреждён");
         }
 
         public static void Import(string zipPath, CancellationToken ct)
@@ -166,10 +190,10 @@ namespace RedOSPackageUpdater
         private static void AddUnique(List<string> list, string value) { if (value.Length > 0 && !list.Any(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase))) list.Add(value); }
         private static void Replace(string source, string target) { if (File.Exists(target)) File.Delete(target); File.Move(source, target); }
         private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
-        private static void Download(string path, Action<long, long> progress, CancellationToken ct)
+        private static void Download(string url, string path, Action<long, long> progress, CancellationToken ct)
         {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            var request = (HttpWebRequest)WebRequest.Create(Url); request.UserAgent = BuildInfo.UserAgent; request.Timeout = 30000; request.ReadWriteTimeout = 30000;
+            var request = (HttpWebRequest)WebRequest.Create(url); request.UserAgent = BuildInfo.UserAgent; request.Timeout = 30000; request.ReadWriteTimeout = 30000;
             using (var response = (HttpWebResponse)request.GetResponse()) using (Stream input = response.GetResponseStream()) using (var output = new FileStream(path, FileMode.Create, FileAccess.Write))
             { byte[] buffer = new byte[128 * 1024]; long done = 0, total = response.ContentLength; int n; while ((n = input.Read(buffer, 0, buffer.Length)) > 0) { ct.ThrowIfCancellationRequested(); output.Write(buffer, 0, n); done += n; if (progress != null) progress(done, total); } }
         }
