@@ -28,7 +28,7 @@ namespace RedOSPackageUpdater
             // Сначала фиксируем SHA вершины main. И manifest, и EXE затем читаются строго из
             // этого коммита, чтобы во время push не смешать файлы двух разных версий.
             var commit = ApiObject("/repos/" + Owner + "/" + Repo + "/commits/main");
-            string commitSha = commit.ContainsKey("sha") ? Convert.ToString(commit["sha"]) : "";
+            string commitSha = commit != null && commit.ContainsKey("sha") ? Convert.ToString(commit["sha"]) : "";
             if (!IsGitSha(commitSha)) throw new InvalidDataException("GitHub не вернул идентификатор версии");
             var content = ApiObject("/repos/" + Owner + "/" + Repo + "/contents/update.json?ref=" + commitSha);
             string manifest = DecodeContent(content);
@@ -60,6 +60,7 @@ namespace RedOSPackageUpdater
                 using (var output = new FileStream(next, FileMode.Create, FileAccess.Write, FileShare.None))
                 using (var hash = SHA256.Create())
                 {
+                    if (input == null) throw new IOException("Сервер вернул пустой поток обновления");
                     long total = resp.ContentLength;
                     long done = 0;
                     if (progress != null) progress(0, total);
@@ -86,6 +87,8 @@ namespace RedOSPackageUpdater
                 try { File.Delete(next); } catch { }
                 throw new InvalidDataException("SHA-256 загруженного обновления не совпадает с update.json");
             }
+            try { ValidateExecutable(next); }
+            catch { try { File.Delete(next); } catch { } throw; }
             return next;
         }
 
@@ -98,7 +101,14 @@ namespace RedOSPackageUpdater
                 "set \"OLD=" + current + "\"\r\nset \"NEW=" + downloadedPath + "\"\r\n" +
                 ":wait\r\ntimeout /t 1 /nobreak >nul\r\n" +
                 "tasklist /fi \"PID eq " + Process.GetCurrentProcess().Id + "\" | find \"" + Process.GetCurrentProcess().Id + "\" >nul && goto wait\r\n" +
-                "move /y \"%NEW%\" \"%OLD%\" >nul\r\nstart \"\" \"%OLD%\"\r\ndel \"%~f0\"\r\n";
+                "set /a TRY=0\r\n:replace\r\nset /a TRY+=1\r\n" +
+                "move /y \"%NEW%\" \"%OLD%\" >nul 2>&1\r\n" +
+                "if not errorlevel 1 goto success\r\n" +
+                "if %TRY% LSS 30 (timeout /t 1 /nobreak >nul & goto replace)\r\n" +
+                "echo [%date% %time%] Не удалось заменить файл после 30 попыток.>\"%OLD%.update-error.log\"\r\n" +
+                "start \"\" \"%OLD%\"\r\ndel \"%~f0\"\r\nexit /b 1\r\n" +
+                ":success\r\ndel \"%OLD%.update-error.log\" >nul 2>&1\r\n" +
+                "start \"\" \"%OLD%\"\r\ndel \"%~f0\"\r\n";
             // Encoding.Default сохраняет кириллицу в локальных путях в кодировке cmd.exe.
             File.WriteAllText(script, body, Encoding.Default);
             Process.Start(new ProcessStartInfo { FileName = script, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden });
@@ -133,6 +143,16 @@ namespace RedOSPackageUpdater
             foreach (char c in value)
                 if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
             return true;
+        }
+
+        private static void ValidateExecutable(string path)
+        {
+            var fi = new FileInfo(path);
+            if (!fi.Exists || fi.Length < 1024 * 1024)
+                throw new InvalidDataException("Загруженный файл обновления имеет некорректный размер");
+            using (var stream = File.OpenRead(path))
+                if (stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
+                    throw new InvalidDataException("Загруженный файл не является Windows-программой");
         }
     }
 }

@@ -19,6 +19,7 @@ rpu_apply_update.cmd
 .vs/
 bin/
 obj/
+tests/*.exe
 *.user
 *.suo
 

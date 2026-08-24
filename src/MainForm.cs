@@ -11,7 +11,7 @@ using System.Windows.Forms;
 
 namespace RedOSPackageUpdater
 {
-    public class MainForm : Form
+    public partial class MainForm : Form
     {
         private AppConfig _cfg;
         private Dictionary<string, CachedCred> _cache;
@@ -56,7 +56,6 @@ namespace RedOSPackageUpdater
         private Label _logHint;
         private bool _lastLineProgress;   // последняя строка лога - прогресс reposync (следующую пишем на её место)
         private string _lastReportDir;    // папка последнего отчёта предпроверки
-        private bool _updateCheckRunning;
 
         public MainForm()
         {
@@ -283,60 +282,6 @@ namespace RedOSPackageUpdater
             catch { }
 
             UpdateModeUi();   // начальная видимость поля пакетов / строки исключений
-        }
-
-        private async Task CheckAppUpdate(bool silent)
-        {
-            if (_updateCheckRunning) return;
-            _updateCheckRunning = true;
-            UpdateProgressDialog updateProgress = null;
-            try
-            {
-                if (!silent) SetStatus("Проверка версии...");
-                UpdateInfo info = await Task.Run(() => AppUpdater.Check());
-                if (!info.IsNewer)
-                {
-                    if (!silent) AppDialog.Info(this, "Обновления", "Установлена актуальная версия " + AppUpdater.CurrentVersion + ".");
-                    return;
-                }
-                // Полный список изменений может быть большим и не должен раздувать служебный диалог.
-                string message = "Доступна версия " + info.VersionText + ".\n\nСкачать и установить?";
-                if (!AppDialog.Confirm(this, "Доступно обновление", message, "Обновить")) return;
-                SetStatus("Скачивание обновления...");
-                updateProgress = new UpdateProgressDialog();
-                Enabled = false;
-                updateProgress.Show(this);
-                updateProgress.Refresh();
-                var progressWindow = updateProgress;
-                string downloaded = await Task.Run(() => AppUpdater.Download(info, (done, total) =>
-                {
-                    if (IsDisposed) return;
-                    Ui(() => { if (!progressWindow.IsDisposed) progressWindow.SetProgress(done, total); });
-                }));
-                SetStatus("Установка обновления...");
-                updateProgress.Close();
-                updateProgress = null;
-                Enabled = true;
-                AppUpdater.InstallAndRestart(downloaded);
-                Close();
-            }
-            catch (Exception ex)
-            {
-                if (updateProgress != null) { updateProgress.Dispose(); updateProgress = null; }
-                if (!IsDisposed) Enabled = true;
-                if (!silent) AppDialog.Error(this, "Ошибка обновления", ex.Message);
-                AppendLog("Ошибка проверки обновления: " + ex.Message);
-            }
-            finally
-            {
-                _updateCheckRunning = false;
-                if (!IsDisposed && !Disposing)
-                {
-                    Enabled = true;
-                    if (!_running) SetStatus("Готово");
-                }
-                if (updateProgress != null) updateProgress.Dispose();
-            }
         }
 
         // Режим "пакеты" (Установить/Обновить пакеты) выбран в списке профиля.
@@ -1061,17 +1006,9 @@ namespace RedOSPackageUpdater
                     {
                         if (string.IsNullOrEmpty(v.Id)) continue;
                         bool isBdu = v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase);
-                        string source = isBdu ? "БДУ ФСТЭК" : (v.Id.StartsWith("ROS-", StringComparison.OrdinalIgnoreCase) ? "RED OS" : "Trivy/CVE");
-                        var relatedCves = new List<string>();
-                        if (v.Id.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) relatedCves.Add(v.Id.ToUpperInvariant());
-                        foreach (var a in v.Aliases ?? new List<string>())
-                            if (a.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase) && !relatedCves.Contains(a)) relatedCves.Add(a);
-                        foreach (var reference in v.References ?? new List<string>())
-                            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(reference ?? "", "CVE-[0-9]{4}-[0-9]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                                if (!relatedCves.Contains(m.Value.ToUpperInvariant())) relatedCves.Add(m.Value.ToUpperInvariant());
-                        string primaryUrl = v.PrimaryUrl;
-                        if (string.IsNullOrEmpty(primaryUrl) && isBdu)
-                            primaryUrl = "https://bdu.fstec.ru/vul/" + v.Id.Substring(4);
+                        string source = VulnerabilitySource(v);
+                        var relatedCves = RelatedCves(v);
+                        string primaryUrl = VulnerabilityUrl(v);
                         var row = new StringBuilder();
                         row.Append(Csv(r.System)).Append(';').Append(Csv(r.Name)).Append(';').Append(Csv(r.Host)).Append(';')
                           .Append(Csv(source)).Append(';').Append(Csv(v.Id)).Append(';').Append(Csv(string.Join(", ", relatedCves.ToArray()))).Append(';')
@@ -1129,12 +1066,8 @@ namespace RedOSPackageUpdater
                 foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
                 {
                     if (string.IsNullOrEmpty(v.Id) || !v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) continue;
-                    var cves = new List<string>();
-                    foreach (var a in v.Aliases ?? new List<string>()) if (a.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase) && !cves.Contains(a)) cves.Add(a);
-                    foreach (var reference in v.References ?? new List<string>())
-                        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(reference ?? "", "CVE-[0-9]{4}-[0-9]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                            if (!cves.Contains(m.Value.ToUpperInvariant())) cves.Add(m.Value.ToUpperInvariant());
-                    string url = string.IsNullOrEmpty(v.PrimaryUrl) ? "https://bdu.fstec.ru/vul/" + v.Id.Substring(4) : v.PrimaryUrl;
+                    var cves = RelatedCves(v);
+                    string url = VulnerabilityUrl(v);
                     bool hasFix = !string.IsNullOrWhiteSpace(v.FixedVersion);
                     h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(r.Host)).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.Title)).Append("</td></tr>");
                 }
@@ -1145,6 +1078,42 @@ namespace RedOSPackageUpdater
         private static string H(string value)
         {
             return System.Net.WebUtility.HtmlEncode(value ?? "");
+        }
+
+        private static string VulnerabilitySource(VulnerabilityFinding finding)
+        {
+            if (finding.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) return "БДУ ФСТЭК";
+            if (finding.Id.StartsWith("ROS-", StringComparison.OrdinalIgnoreCase)) return "RED OS";
+            return "Trivy/CVE";
+        }
+
+        private static string VulnerabilityUrl(VulnerabilityFinding finding)
+        {
+            if (!string.IsNullOrWhiteSpace(finding.PrimaryUrl)) return finding.PrimaryUrl.Trim();
+            return finding.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)
+                ? "https://bdu.fstec.ru/vul/" + finding.Id.Substring(4)
+                : "";
+        }
+
+        private static List<string> RelatedCves(VulnerabilityFinding finding)
+        {
+            var result = new List<string>();
+            if (finding.Id.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) AddUnique(result, finding.Id);
+            foreach (string alias in finding.Aliases ?? new List<string>())
+                if (!string.IsNullOrWhiteSpace(alias) && alias.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) AddUnique(result, alias);
+            foreach (string reference in finding.References ?? new List<string>())
+                foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(reference ?? "", "CVE-[0-9]{4}-[0-9]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    AddUnique(result, match.Value);
+            return result;
+        }
+
+        private static void AddUnique(List<string> values, string value)
+        {
+            value = (value ?? "").Trim().ToUpperInvariant();
+            if (value.Length == 0) return;
+            foreach (string existing in values)
+                if (string.Equals(existing, value, StringComparison.OrdinalIgnoreCase)) return;
+            values.Add(value);
         }
 
         private void UpdateVulnerabilityDb()

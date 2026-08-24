@@ -22,27 +22,24 @@ namespace RedOSPackageUpdater
         // а Read() дёргается на каждый узел при массовом обновлении - кешируем, чтобы не гонять
         // Stream->StreamReader->string и два Replace на одни и те же байты сотни раз за прогон.
         private static readonly Dictionary<string, string> _cache = new Dictionary<string, string>(StringComparer.Ordinal);
+        private static readonly object _cacheLock = new object();
 
         public static string Read(string resourceName)
         {
-            string cached;
-            if (_cache.TryGetValue(resourceName, out cached)) return cached;
-
-            var asm = Assembly.GetExecutingAssembly();
-            using (Stream s = asm.GetManifestResourceStream(resourceName))
+            lock (_cacheLock)
             {
-                // Отсутствие ресурса здесь - НЕ штатная ситуация (в отличие от Program.ResolveEmbedded,
-                // где "эта DLL не наша" - нормальный случай перебора). Это либо опечатка в имени
-                // константы, либо забыли пометить .sh файл как Embedded Resource при сборке - должно
-                // упасть сразу и понятно, а не тихой NullReferenceException где-то в SSH-логике
-                // на реальном сервере.
-                if (s == null) throw new InvalidOperationException("Не найден встроенный ресурс: " + resourceName);
-                using (var r = new StreamReader(s, Encoding.UTF8))
+                string cached;
+                if (_cache.TryGetValue(resourceName, out cached)) return cached;
+                var asm = Assembly.GetExecutingAssembly();
+                using (Stream s = asm.GetManifestResourceStream(resourceName))
                 {
-                    // нормализуем в LF на всякий случай
-                    string text = r.ReadToEnd().Replace("\r\n", "\n").Replace("\r", "\n");
-                    _cache[resourceName] = text;
-                    return text;
+                    if (s == null) throw new InvalidOperationException("Не найден встроенный ресурс: " + resourceName);
+                    using (var r = new StreamReader(s, Encoding.UTF8))
+                    {
+                        string text = r.ReadToEnd().Replace("\r\n", "\n").Replace("\r", "\n");
+                        _cache[resourceName] = text;
+                        return text;
+                    }
                 }
             }
         }

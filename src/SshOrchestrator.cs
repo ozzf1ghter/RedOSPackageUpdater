@@ -348,56 +348,14 @@ namespace RedOSPackageUpdater
                 finally { if (vulnerabilityRunId != null) CleanupRemoteVulnerabilityScan(client, vulnerabilityRunId, log); }
                 res.OsInfo = OsInfoFromOutput(outp);
 
-                string result = Marker(outp, "PKGOP_RESULT");
-                string reb = Marker(outp, "REBOOT_RECOMMENDED");
-                string trivyInstalled = Marker(outp, "TRIVY_INSTALLED");
-                int changed = 0;
-                int vulnTotal = 0, vulnBdu = 0, vulnCritical = 0, vulnHigh = 0;
-                // Список ВСЕХ ненайденных пакетов, а не только последнего - раньше при нескольких
-                // "PKGOP_ERR|" строках предыдущие терялись (переменная перезаписывалась).
-                var nomatchList = new List<string>();
-                foreach (var raw in (outp ?? "").Split('\n'))
-                {
-                    string ln = raw.TrimStart();
-                    if (ln.StartsWith("CHANGED|")) changed++;
-                    else if (ln.StartsWith("VULN|"))
-                    {
-                        changed++;
-                        var vf = ln.Split(new[] { '|' }, 7);
-                        if (vf.Length >= 6)
-                            res.Vulnerabilities.Add(new VulnerabilityFinding
-                            {
-                                Id = vf[1].Trim(), Package = vf[2].Trim(), InstalledVersion = vf[3].Trim(),
-                                FixedVersion = vf[4].Trim(), Severity = vf[5].Trim(),
-                                Title = vf.Length > 6 ? vf[6].Trim() : ""
-                            });
-                    }
-                    else if (ln.StartsWith("VULN_SUMMARY|"))
-                    {
-                        var vp = ln.Split('|');
-                        if (vp.Length > 4) { int.TryParse(vp[1], out vulnTotal); int.TryParse(vp[2], out vulnBdu); int.TryParse(vp[3], out vulnCritical); int.TryParse(vp[4], out vulnHigh); }
-                    }
-                    else if (ln.StartsWith("VULN_URL|") || ln.StartsWith("VULN_ALIAS|") || ln.StartsWith("VULN_REF|"))
-                    {
-                        var mp = ln.Split(new[] { '|' }, 4);
-                        if (mp.Length == 4)
-                        {
-                            VulnerabilityFinding finding = null;
-                            for (int vi = res.Vulnerabilities.Count - 1; vi >= 0; vi--)
-                                if (res.Vulnerabilities[vi].Id == mp[1].Trim() && res.Vulnerabilities[vi].Package == mp[2].Trim())
-                                { finding = res.Vulnerabilities[vi]; break; }
-                            string value = mp[3].Trim();
-                            if (finding != null && value.Length > 0)
-                            {
-                                if (ln.StartsWith("VULN_URL|")) finding.PrimaryUrl = value;
-                                else if (ln.StartsWith("VULN_ALIAS|") && !finding.Aliases.Contains(value)) finding.Aliases.Add(value);
-                                else if (ln.StartsWith("VULN_REF|") && !finding.References.Contains(value)) finding.References.Add(value);
-                            }
-                        }
-                    }
-                    else if (ln.StartsWith("PKGOP_ERR|")) { var pp = ln.Split(new[] { '|' }, 2); if (pp.Length == 2) nomatchList.Add(pp[1].Trim()); }
-                }
-                string nomatch = nomatchList.Count > 0 ? string.Join(", ", nomatchList.ToArray()) : null;
+                PkgOpParseResult parsed = PkgOpOutputParser.Parse(outp, res);
+                string result = parsed.Result;
+                string reb = parsed.RebootRecommended;
+                string trivyInstalled = parsed.TrivyInstalled;
+                int changed = parsed.Changed;
+                int vulnTotal = parsed.VulnerabilityTotal, vulnBdu = parsed.VulnerabilityBdu;
+                int vulnCritical = parsed.VulnerabilityCritical, vulnHigh = parsed.VulnerabilityHigh;
+                string nomatch = parsed.Errors;
 
                 res.UpdateResult = result ?? "NO_MARKER";
                 res.RebootRequired = reb ?? "?";
@@ -976,16 +934,16 @@ namespace RedOSPackageUpdater
                 // библиотека не обрывает "немое" зависание (канал жив, вывода просто нет) по этому таймауту.
                 command.CommandTimeout = TimeSpan.FromSeconds(timeoutSec);
                 IAsyncResult ar = command.BeginExecute();
-                bool timedOut = false;
-                bool cancelled = false;
-                bool finishedReading = false;   // защита от гонки: не считать таймаутом, если чтение уже дошло до конца
+                int timedOut = 0;
+                int cancelled = 0;
+                int finishedReading = 0;   // Interlocked/Volatile: переменная читается timer- и SSH-потоками
                 // Watchdog: при "немом" зависании (TCP жив, вывода нет) ReadLine блокируется и CommandTimeout
                 // не срабатывает - принудительно обрываем команду по таймауту, чтобы не держать поток вечно.
                 using (var watchdog = new Timer(delegate {
-                    try { if (!finishedReading && !ar.IsCompleted) { timedOut = true; command.CancelAsync(); } } catch { }
+                    try { if (Volatile.Read(ref finishedReading) == 0 && !ar.IsCompleted) { Interlocked.Exchange(ref timedOut, 1); command.CancelAsync(); } } catch { }
                 }, null, timeoutSec * 1000, System.Threading.Timeout.Infinite))
                 // Отмена пользователем ("Стоп") реально прерывает выполняющуюся команду, а не ждёт таймаут.
-                using (ct.Register(() => { try { if (!ar.IsCompleted) { cancelled = true; command.CancelAsync(); } } catch { } }))
+                using (ct.Register(() => { try { if (!ar.IsCompleted) { Interlocked.Exchange(ref cancelled, 1); command.CancelAsync(); } } catch { } }))
                 using (var reader = new StreamReader(command.OutputStream, Encoding.UTF8))
                 {
                     string line;
@@ -995,13 +953,13 @@ namespace RedOSPackageUpdater
                         sb.Append(line).Append('\n');
                         if (lineLog != null) lineLog(line);
                     }
-                    finishedReading = true;
+                    Volatile.Write(ref finishedReading, 1);
                     // EndExecute зовём ДО закрытия reader/OutputStream: иначе на уже освобождённом
                     // канале он может бросить и мы ложно пометим удачный прогон как [TIMEOUT_OR_ERROR].
                     try { command.EndExecute(ar); }
                     catch (Exception ex)
                     {
-                        string msg = cancelled ? "отменено пользователем" : (timedOut ? "превышен таймаут " + timeoutSec + " c" : ex.Message);
+                        string msg = Volatile.Read(ref cancelled) != 0 ? "отменено пользователем" : (Volatile.Read(ref timedOut) != 0 ? "превышен таймаут " + timeoutSec + " c" : ex.Message);
                         if (lineLog != null) lineLog("[команда прервана: " + msg + "]");
                         sb.Append("\n[TIMEOUT_OR_ERROR]");
                     }
