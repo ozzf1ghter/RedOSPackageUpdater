@@ -12,6 +12,7 @@ namespace RedOSPackageUpdater
         {
             public string Severity;
             public string Title;
+            public string PublishedDate;
             public string[] References;
         }
 
@@ -23,6 +24,7 @@ namespace RedOSPackageUpdater
                     new Details
                     {
                         Severity = "HIGH",
+                        PublishedDate = "2026-05-04",
                         Title = "Уязвимость компонента raster-interpret.c сервера печати CUPS, связанная с недостаточной проверкой вводимых данных и позволяющая удалённому нарушителю вызвать отказ в обслуживании",
                         References = new[]
                         {
@@ -37,6 +39,7 @@ namespace RedOSPackageUpdater
                     new Details
                     {
                         Severity = "HIGH",
+                        PublishedDate = "2026-05-27",
                         Title = "Уязвимость функции skb_gro_receive() ядра Linux, связанная с использованием памяти после освобождения и позволяющая локальному нарушителю получить root-привилегии",
                         References = new[]
                         {
@@ -76,6 +79,11 @@ namespace RedOSPackageUpdater
             if (string.IsNullOrWhiteSpace(finding.PrimaryUrl))
             {
                 finding.PrimaryUrl = details.References[0];
+                changed = true;
+            }
+            if (string.IsNullOrWhiteSpace(finding.PublishedDate) && !string.IsNullOrWhiteSpace(details.PublishedDate))
+            {
+                finding.PublishedDate = details.PublishedDate;
                 changed = true;
             }
             foreach (string reference in details.References)

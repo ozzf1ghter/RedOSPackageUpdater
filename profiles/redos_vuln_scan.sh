@@ -115,6 +115,7 @@ fi
 cat > "$tmpl" <<'EOF'
 {{ range . }}{{ range .Vulnerabilities }}{{ $v := . }}VULN|{{ .VulnerabilityID }}|{{ .PkgName }}|{{ .InstalledVersion }}|{{ .FixedVersion }}|{{ .Severity }}|{{ .Title }}
 VULN_URL|{{ .VulnerabilityID }}|{{ .PkgName }}|{{ .PrimaryURL }}
+VULN_DATE|{{ .VulnerabilityID }}|{{ .PkgName }}|{{ .PublishedDate }}|{{ .LastModifiedDate }}
 {{ range .VendorIDs }}VULN_ALIAS|{{ $v.VulnerabilityID }}|{{ $v.PkgName }}|{{ . }}
 {{ end }}{{ range .Vulnerability.References }}VULN_REF|{{ $v.VulnerabilityID }}|{{ $v.PkgName }}|{{ . }}
 {{ end }}{{ end }}{{ end }}

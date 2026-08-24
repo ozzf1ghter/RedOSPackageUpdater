@@ -187,6 +187,8 @@ namespace RedOSPackageUpdater
         public string Severity { get; set; }
         public string Title { get; set; }
         public string PrimaryUrl { get; set; }
+        public string PublishedDate { get; set; }
+        public string LastModifiedDate { get; set; }
         public List<string> Aliases { get; set; }
         public List<string> References { get; set; }
 

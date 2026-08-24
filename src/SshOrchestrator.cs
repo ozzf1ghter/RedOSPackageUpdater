@@ -187,6 +187,21 @@ namespace RedOSPackageUpdater
             return Regex.Replace(name + "_" + host, "[^\\w.-]", "_");
         }
 
+        private static string NodeLabel(Node node)
+        {
+            return NodeLabel(node != null ? node.Name : "", node != null ? node.Host : "");
+        }
+
+        private static string NodeLabel(string name, string host)
+        {
+            name = name ?? "";
+            host = host ?? "";
+            name = name.Trim(); host = host.Trim();
+            if (name.Length == 0) return host;
+            if (host.Length == 0 || string.Equals(name, host, StringComparison.OrdinalIgnoreCase)) return name;
+            return name + " (" + host + ")";
+        }
+
         // Логгер конкретного узла: пишет в его лог-файл на диске и одновременно шлёт строку в
         // живой лог UI через OnLog (см. контракт многопоточности у объявления OnLog выше).
         private Action<string> MakeLogger(string logFile, string host)
@@ -206,7 +221,7 @@ namespace RedOSPackageUpdater
             string logFile = Path.Combine(logDir, SafeFileName(node, "host") + ".preview.log");
             Action<string> log = MakeLogger(logFile, node.Host);
             if (OnPreviewStart != null) OnPreviewStart(node.Host);
-            log("=== PREVIEW " + node.Host + " (" + node.Name + ") ===");
+            log("=== PREVIEW " + NodeLabel(node) + " ===");
 
             SshClient client = null; Credential used = null;
             var dummy = new HostResult();
@@ -274,9 +289,9 @@ namespace RedOSPackageUpdater
 
             // Явная строка завершения (начинается с === - проходит фильтр живого лога, видно что узел отработал)
             if (string.IsNullOrEmpty(hp.Error))
-                log("=== PREVIEW готово " + node.Host + ": в транзакции " + hp.Total + " (advisory " + hp.Sec + ", завис " + hp.Dep + ", исключено " + hp.Excluded + ") ===");
+                log("=== PREVIEW готово " + NodeLabel(node) + ": в транзакции " + hp.Total + " (advisory " + hp.Sec + ", завис " + hp.Dep + ", исключено " + hp.Excluded + ") ===");
             else
-                log("=== PREVIEW ошибка " + node.Host + ": " + hp.Error + " ===");
+                log("=== PREVIEW ошибка " + NodeLabel(node) + ": " + hp.Error + " ===");
 
             if (OnPreviewDone != null) OnPreviewDone(hp);
             return hp;
@@ -318,7 +333,7 @@ namespace RedOSPackageUpdater
             res.LogFile = Path.Combine(logDir, SafeFileName(node, "host") + ".pkgop.log");
             Action<string> log = MakeLogger(res.LogFile, node.Host);
             if (OnHostStart != null) OnHostStart(res);
-            log("=== PKGOP " + node.Host + " (" + action + ": " + pkgs + ") ===");
+            log("=== PKGOP " + NodeLabel(node) + " (" + action + ": " + pkgs + ") ===");
 
             SshClient client = null; Credential used = null;
             try { client = ResolveAndConnect(node, new RunOptions { Settings = settings }, log, res, ct, out used); }
@@ -420,7 +435,7 @@ namespace RedOSPackageUpdater
             { try { File.AppendAllText(res.LogFile, DateTime.Now.ToString("HH:mm:ss") + " " + line + "\r\n", new UTF8Encoding(false)); } catch { } };
             Action<string> log = MakeLogger(res.LogFile, node.Host);
             if (OnHostStart != null) OnHostStart(res);
-            log("=== REPO " + node.Host + " ===");
+            log("=== REPO " + NodeLabel(node) + " ===");
 
             SshClient client = null; Credential used = null;
             try { client = ResolveAndConnect(node, new RunOptions { Settings = settings }, log, res, ct, out used); }
@@ -516,7 +531,7 @@ namespace RedOSPackageUpdater
             Action<string> log = MakeLogger(res.LogFile, node.Host);
 
             if (OnHostStart != null) OnHostStart(res);
-            log("=== START " + node.Host + " (" + node.Name + ") ===");
+            log("=== START " + NodeLabel(node) + " ===");
 
             // 1. Подбор учётки (кеш -> пул) + подключение
             SshClient client = null;
@@ -697,7 +712,7 @@ namespace RedOSPackageUpdater
 
         private void Finish(HostResult res, Action<string> log)
         {
-            log("=== DONE " + res.Host + " status=" + res.Status + " | " + res.Note + " ===");
+            log("=== DONE " + NodeLabel(res.Name, res.Host) + " status=" + res.Status + " | " + res.Note + " ===");
             if (OnHostDone != null) OnHostDone(res);
         }
 

@@ -16,6 +16,7 @@ internal static class ParserTests
         string output =
             "VULN|BDU:2026-1|kernel|1.0|1.1|HIGH|Описание|с разделителем\n" +
             "VULN_URL|BDU:2026-1|kernel|https://bdu.fstec.ru/vul/2026-1\n" +
+            "VULN_DATE|BDU:2026-1|kernel|2026-05-27 10:15:00 +0000 UTC|2026-06-22 12:00:00 +0000 UTC\n" +
             "VULN_ALIAS|BDU:2026-1|kernel|CVE-2026-1\n" +
             "VULN_ALIAS|bdu:2026-1|KERNEL|cve-2026-1\n" +
             "VULN_REF|BDU:2026-1|kernel|https://example.test/CVE-2026-1\n" +
@@ -32,6 +33,7 @@ internal static class ParserTests
         Check(host.Vulnerabilities.Count == 1, "строка уязвимости");
         Check(host.Vulnerabilities[0].Title == "Описание|с разделителем", "разделитель в описании");
         Check(host.Vulnerabilities[0].Aliases.Count == 1, "регистронезависимое удаление дублей");
+        Check(host.Vulnerabilities[0].PublishedDate == "2026-05-27" && host.Vulnerabilities[0].LastModifiedDate == "2026-06-22", "даты карточки уязвимости");
         Check(parsed.Errors.Contains("первый") && parsed.Errors.Contains("второй"), "накопление всех ошибок");
 
         var missing = new VulnerabilityFinding { Id = "BDU:2026-07378", Severity = "UNKNOWN" };

@@ -998,7 +998,7 @@ namespace RedOSPackageUpdater
             try
             {
                 BduFindingEnricher.Enrich(results);
-                const string header = "Система;Узел;Host;Источник;Идентификатор;Связанные CVE;Все алиасы;Пакет;Установленная версия;Исправленная версия;Исправление доступно;Критичность;Описание;Основная ссылка;Дополнительные ссылки";
+                const string header = "Система;Узел;Host;Источник;Идентификатор;Связанные CVE;Все алиасы;Пакет;Установленная версия;Исправленная версия;Исправление доступно;Критичность;Дата публикации;Дата изменения;Описание;Основная ссылка;Дополнительные ссылки";
                 var fstec = new StringBuilder();
                 var all = new StringBuilder();
                 fstec.AppendLine(header); all.AppendLine(header);
@@ -1016,7 +1016,8 @@ namespace RedOSPackageUpdater
                           .Append(Csv(string.Join(", ", (v.Aliases ?? new List<string>()).ToArray()))).Append(';')
                           .Append(Csv(v.Package)).Append(';').Append(Csv(v.InstalledVersion)).Append(';')
                           .Append(Csv(v.FixedVersion)).Append(';').Append(Csv(string.IsNullOrWhiteSpace(v.FixedVersion) ? "нет" : "да")).Append(';')
-                          .Append(Csv(v.Severity)).Append(';').Append(Csv(v.Title)).Append(';').Append(Csv(primaryUrl)).Append(';')
+                          .Append(Csv(v.Severity)).Append(';').Append(Csv(v.PublishedDate)).Append(';').Append(Csv(v.LastModifiedDate)).Append(';')
+                          .Append(Csv(v.Title)).Append(';').Append(Csv(primaryUrl)).Append(';')
                           .Append(Csv(string.Join(" | ", (v.References ?? new List<string>()).ToArray()))).AppendLine();
                         all.Append(row);
                         if (isBdu) fstec.Append(row);
@@ -1058,11 +1059,11 @@ namespace RedOSPackageUpdater
              .Append("<div class='card'><div class='num'>").Append(results.Count).Append("</div><div class='muted'>серверов</div></div></div>")
              .Append("<table class='hostsum'><thead><tr><th>Сервер</th><th>Узел</th><th>Статус</th><th>Результат</th></tr></thead><tbody>");
             foreach (var r in results)
-                h.Append("<tr><td>").Append(H(r.Host)).Append("</td><td>").Append(H(r.Name)).Append("</td><td>").Append(H(StatusText(r.Status))).Append("</td><td>").Append(H(r.Note)).Append("</td></tr>");
+                h.Append("<tr><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td>").Append(H(r.Name)).Append("</td><td>").Append(H(StatusText(r.Status))).Append("</td><td>").Append(H(r.Note)).Append("</td></tr>");
             h.Append("</tbody></table><div class='tools'><input id='q' placeholder='Поиск по БДУ, CVE, пакету...'><select id='sev'><option value=''>Любая критичность</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>UNKNOWN</option></select><select id='fix'><option value=''>Все записи</option><option value='yes'>Есть исправление</option><option value='no'>Нет исправления</option></select><select id='host'><option value=''>Все серверы</option>");
             var hosts = new List<string>();
             foreach (var r in results) if (!hosts.Contains(r.Host ?? "")) { hosts.Add(r.Host ?? ""); h.Append("<option>").Append(H(r.Host)).Append("</option>"); }
-            h.Append("</select><span class='muted' id='shown'></span></div><table id='v'><thead><tr><th>Host</th><th>БДУ / CVE</th><th>Пакет</th><th>Установлено</th><th>Исправление</th><th>Критичность</th><th>Описание</th></tr></thead><tbody>");
+            h.Append("</select><span class='muted' id='shown'></span></div><table id='v'><thead><tr><th>Сервер</th><th>БДУ / CVE</th><th>Пакет</th><th>Установлено</th><th>Исправление</th><th>Критичность</th><th>Опубликована</th><th>Изменена</th><th>Описание</th></tr></thead><tbody>");
             foreach (var r in results)
                 foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
                 {
@@ -1070,7 +1071,7 @@ namespace RedOSPackageUpdater
                     var cves = RelatedCves(v);
                     string url = VulnerabilityUrl(v);
                     bool hasFix = !string.IsNullOrWhiteSpace(v.FixedVersion);
-                    h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(r.Host)).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.Title)).Append("</td></tr>");
+                    h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.PublishedDate)).Append("</td><td>").Append(H(v.LastModifiedDate)).Append("</td><td>").Append(H(v.Title)).Append("</td></tr>");
                 }
             h.Append("</tbody></table></div><script>const q=document.getElementById('q'),s=document.getElementById('sev'),f=document.getElementById('fix'),ho=document.getElementById('host'),rows=[...document.querySelectorAll('#v tbody tr')],shown=document.getElementById('shown');function run(){let n=0,Q=q.value.toLowerCase();rows.forEach(r=>{let ok=(!Q||r.innerText.toLowerCase().includes(Q))&&(!s.value||r.dataset.sev==s.value)&&(!f.value||r.dataset.fix==f.value)&&(!ho.value||r.dataset.host==ho.value);r.classList.toggle('hidden',!ok);if(ok)n++});shown.textContent='Показано: '+n} [q,s,f,ho].forEach(x=>x.addEventListener(x.tagName=='INPUT'?'input':'change',run));run();</script></body></html>");
             return h.ToString();
@@ -1079,6 +1080,15 @@ namespace RedOSPackageUpdater
         private static string H(string value)
         {
             return System.Net.WebUtility.HtmlEncode(value ?? "");
+        }
+
+        private static string NodeLabel(string name, string host)
+        {
+            name = (name ?? "").Trim();
+            host = (host ?? "").Trim();
+            if (name.Length == 0) return host;
+            if (host.Length == 0 || string.Equals(name, host, StringComparison.OrdinalIgnoreCase)) return name;
+            return name + " (" + host + ")";
         }
 
         private static string VulnerabilitySource(VulnerabilityFinding finding)
@@ -1496,7 +1506,7 @@ namespace RedOSPackageUpdater
             }
             bool shown = (_selectedHost == null) || (_selectedHost == host);
             if (!shown) return;
-            string screenLine = (_selectedHost == null) ? host + "  " + stamped : stamped;
+            string screenLine = (_selectedHost == null) ? HostLabel(host) + "  " + stamped : stamped;
             // replaced бывает только для reposync-прогресса (один хост, без чередования) - безопасно править последнюю строку
             if (replaced) Ui(() => ReplaceLastLogLine(screenLine));
             else Ui(() => AppendLog(screenLine));
@@ -1536,7 +1546,7 @@ namespace RedOSPackageUpdater
         private void ShowHostLog(string host)
         {
             _selectedHost = host;
-            if (_logHint != null) _logHint.Text = "Лог узла: " + host + "   (кнопка «Все узлы» — общий вид)";
+            if (_logHint != null) _logHint.Text = "Лог узла: " + HostLabel(host) + "   (кнопка «Все узлы» — общий вид)";
             string text;
             lock (_logLock) { StringBuilder sb; text = _hostLogs.TryGetValue(host, out sb) ? sb.ToString() : ""; }
             _log.Text = text;
@@ -1549,9 +1559,18 @@ namespace RedOSPackageUpdater
             var sb = new StringBuilder();
             lock (_logLock)
                 foreach (var kv in _hostLogs)
-                { sb.Append("===== ").Append(kv.Key).Append(" =====\r\n").Append(kv.Value).Append("\r\n"); }
+                { sb.Append("===== ").Append(HostLabel(kv.Key)).Append(" =====\r\n").Append(kv.Value).Append("\r\n"); }
             _log.Text = sb.ToString();
             _log.SelectionStart = _log.TextLength; _log.ScrollToCaret();
+        }
+
+        private string HostLabel(string host)
+        {
+            foreach (SubSystem system in _cfg.Systems ?? new List<SubSystem>())
+                foreach (Node node in system.Nodes ?? new List<Node>())
+                    if (string.Equals(node.Host, host, StringComparison.OrdinalIgnoreCase))
+                        return NodeLabel(node.Name, node.Host);
+            return host ?? "";
         }
 
         // ---------- утилиты UI ----------
