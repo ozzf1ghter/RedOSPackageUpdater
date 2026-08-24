@@ -33,6 +33,15 @@ internal static class ParserTests
         Check(host.Vulnerabilities[0].Title == "Описание|с разделителем", "разделитель в описании");
         Check(host.Vulnerabilities[0].Aliases.Count == 1, "регистронезависимое удаление дублей");
         Check(parsed.Errors.Contains("первый") && parsed.Errors.Contains("второй"), "накопление всех ошибок");
+
+        var missing = new VulnerabilityFinding { Id = "BDU:2026-07378", Severity = "UNKNOWN" };
+        Check(BduFindingEnricher.Enrich(missing), "дозаполнение неполной карточки БДУ");
+        Check(missing.Severity == "HIGH" && !string.IsNullOrWhiteSpace(missing.Title), "критичность и описание БДУ");
+        Check(missing.PrimaryUrl == "https://bdu.fstec.ru/vul/2026-07378" && missing.References.Count >= 2, "ссылки карточки БДУ");
+
+        var complete = new VulnerabilityFinding { Id = "BDU:2026-06252", Severity = "MEDIUM", Title = "Более свежие данные" };
+        BduFindingEnricher.Enrich(complete);
+        Check(complete.Severity == "MEDIUM" && complete.Title == "Более свежие данные", "данные Trivy не перезаписываются");
         return _failed == 0 ? 0 : 1;
     }
 }

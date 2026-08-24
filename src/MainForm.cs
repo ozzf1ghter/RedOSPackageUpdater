@@ -997,6 +997,7 @@ namespace RedOSPackageUpdater
         {
             try
             {
+                BduFindingEnricher.Enrich(results);
                 const string header = "Система;Узел;Host;Источник;Идентификатор;Связанные CVE;Все алиасы;Пакет;Установленная версия;Исправленная версия;Исправление доступно;Критичность;Описание;Основная ссылка;Дополнительные ссылки";
                 var fstec = new StringBuilder();
                 var all = new StringBuilder();

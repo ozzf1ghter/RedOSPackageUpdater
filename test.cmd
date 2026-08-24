@@ -6,7 +6,7 @@ if not exist "%CSC%" exit /b 2
 if not exist tests mkdir tests
 "%CSC%" /nologo /target:exe /out:tests\ParserTests.exe ^
   /reference:System.dll /reference:System.Web.Extensions.dll ^
-  tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs
+  tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs src\BduFindingEnricher.cs
 if errorlevel 1 exit /b 1
 tests\ParserTests.exe
 set RESULT=%ERRORLEVEL%
