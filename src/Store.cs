@@ -38,9 +38,17 @@ namespace RedOSPackageUpdater
             {
                 string raw = File.ReadAllText(ConfigPath, Encoding.UTF8);
                 cfg = DeserializeConfig(raw);
-                // Конфиг есть, но не распарсился (битый/обрезанный) - НЕ теряем молча: сохраняем копию для восстановления.
+                // Конфиг есть, но не распарсился: сохраняем повреждённый экземпляр и
+                // пробуем последнюю атомарную резервную копию. Пустой новый конфиг здесь
+                // создавать нельзя — последующее сохранение затрёт восстановимые данные.
                 if (cfg == null && raw.Trim().Length > 0)
+                {
                     try { File.Copy(ConfigPath, ConfigPath + ".corrupt", true); } catch { }
+                    string backup = ConfigPath + ".bak";
+                    if (File.Exists(backup)) cfg = DeserializeConfig(File.ReadAllText(backup, Encoding.UTF8));
+                    if (cfg == null)
+                        throw new InvalidDataException("config.json повреждён, и резервная копия config.json.bak недоступна или также повреждена. Исходный файл не изменён.");
+                }
             }
             else if (!string.IsNullOrEmpty(seedPathIfMissing) && File.Exists(seedPathIfMissing))
                 cfg = DeserializeConfig(File.ReadAllText(seedPathIfMissing, Encoding.UTF8));
@@ -117,10 +125,9 @@ namespace RedOSPackageUpdater
                 }
                 catch (PlatformNotSupportedException)
                 {
-                    // File.Replace недоступна на файловой системе (например, сетевой диск без
-                    // транзакционной замены) - откатываемся на простое удаление+перемещение.
-                    try { if (File.Exists(target)) File.Delete(target); } catch { }
-                    File.Move(tmp, target);
+                    // File.Replace недоступна: используем замену с откатом, а не
+                    // удаление target перед Move (при сбое Move это теряло конфиг).
+                    FileSwap.Replace(tmp, target);
                     return;
                 }
             }
@@ -154,6 +161,7 @@ namespace RedOSPackageUpdater
 
         public static void SaveCache(Dictionary<string, CachedCred> dict)
         {
+            if (dict == null) throw new ArgumentNullException("dict");
             lock (_cacheLock)
             {
                 try
@@ -193,6 +201,7 @@ namespace RedOSPackageUpdater
 
         public static void SaveKnownHosts(Dictionary<string, string> dict)
         {
+            if (dict == null) throw new ArgumentNullException("dict");
             lock (_knownHostsLock) try
             {
                 EnsureDirs();
@@ -236,6 +245,8 @@ namespace RedOSPackageUpdater
 
         public static void ExportPortable(string path, string master, AppConfig cfg)
         {
+            if (cfg == null) throw new ArgumentNullException("cfg");
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Не задан путь экспорта", "path");
             // Мастер-пароль защищает весь пул паролей узлов в файле экспорта - короткий/пустой
             // пароль тривиально брутфорсится офлайн. Проверяем на уровне хранилища, а не только
             // (не факт, что вообще) на уровне UI-диалога.
@@ -253,7 +264,13 @@ namespace RedOSPackageUpdater
                 Credentials = new List<CredExport>()
             };
             foreach (var c in cfg.Credentials)
+            {
+                if (c == null) continue;
+                if (c.Password == null && !string.IsNullOrEmpty(c.EncPassword))
+                    throw new InvalidOperationException("Пароль учётной записи «" + (c.User ?? "root") +
+                        "» недоступен текущему пользователю Windows. Переносимый экспорт остановлен, чтобы не создать неполную резервную копию.");
                 b.Credentials.Add(new CredExport { User = c.User, Password = c.Password });
+            }
             string json = NewSer().Serialize(b);
             string blob = Crypto.EncryptPortable(json, master);
             File.WriteAllText(path, blob, new UTF8Encoding(false));
@@ -261,13 +278,15 @@ namespace RedOSPackageUpdater
 
         public static AppConfig ImportPortable(string path, string master)
         {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Не задан путь импорта", "path");
+            if (string.IsNullOrEmpty(master)) throw new ArgumentException("Не задан мастер-пароль", "master");
             string blob = File.ReadAllText(path, Encoding.UTF8);
             string json = Crypto.DecryptPortable(blob, master);
             var b = NewSer().Deserialize<ExportBundle>(json);
             if (b == null) throw new InvalidDataException("Не удалось разобрать импортируемые данные");
             var cfg = new AppConfig
             {
-                Version = b.Version == 0 ? 1 : b.Version,
+                Version = b.Version == 0 ? AppConfig.CurrentSchemaVersion : b.Version,
                 Settings = b.Settings,
                 Systems = b.Systems,
                 ExcludePackages = b.ExcludePackages,

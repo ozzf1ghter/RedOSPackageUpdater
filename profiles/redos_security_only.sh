@@ -9,6 +9,9 @@ osname="$( (. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") 2>/dev/null)"
 osver="$( (. /etc/os-release 2>/dev/null; echo "$VERSION_ID") 2>/dev/null)"
 case "$osver" in 7.3|8.0) ;; *) echo "ОШИБКА: RED OS ${osver:-unknown} пока не поддерживается этим профилем"; exit 1;; esac
 command -v dnf >/dev/null 2>&1 || { echo "ОШИБКА: DNF не найден"; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "ОШИБКА: профиль должен выполняться от root"; exit 1; }
+command -v rpm >/dev/null 2>&1 || { echo "ОШИБКА: RPM не найден"; exit 1; }
+[ -f /etc/dnf/dnf.conf ] || { echo "ОШИБКА: /etc/dnf/dnf.conf отсутствует"; exit 1; }
 echo "OS_INFO|$osname|$(uname -r)|$(dnf --version 2>/dev/null | head -1 | tr -d '\n')"
 uname -r
 echo

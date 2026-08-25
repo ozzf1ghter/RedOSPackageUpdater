@@ -42,7 +42,7 @@ namespace RedOSPackageUpdater
             string sha = m != null && m.ContainsKey("sha256") ? Convert.ToString(m["sha256"]) : "";
             Version remote;
             if (!Version.TryParse(versionText, out remote)) throw new InvalidDataException("В update.json указана некорректная версия");
-            if (string.IsNullOrEmpty(sha) || sha.Length != 64) throw new InvalidDataException("В update.json отсутствует SHA-256");
+            if (!IsSha256(sha)) throw new InvalidDataException("В update.json отсутствует корректный SHA-256");
             sha = sha.ToLowerInvariant();
             Version current = new Version(CurrentVersion);
             string currentHash = remote == current ? FileSha256(Process.GetCurrentProcess().MainModule.FileName) : null;
@@ -106,7 +106,7 @@ namespace RedOSPackageUpdater
             if (!File.Exists(downloadedPath)) throw new FileNotFoundException("Файл обновления не найден", downloadedPath);
             string script = Path.Combine(Path.GetDirectoryName(current), "rpu_apply_update.cmd");
             string body = "@echo off\r\nsetlocal\r\n" +
-                "set \"OLD=" + current + "\"\r\nset \"NEW=" + downloadedPath + "\"\r\n" +
+                "set \"OLD=" + BatchLiteral(current) + "\"\r\nset \"NEW=" + BatchLiteral(downloadedPath) + "\"\r\n" +
                 ":wait\r\ntimeout /t 1 /nobreak >nul\r\n" +
                 "tasklist /fi \"PID eq " + Process.GetCurrentProcess().Id + "\" | find \"" + Process.GetCurrentProcess().Id + "\" >nul && goto wait\r\n" +
                 "set /a TRY=0\r\n:replace\r\nset /a TRY+=1\r\n" +
@@ -122,30 +122,11 @@ namespace RedOSPackageUpdater
             Process.Start(new ProcessStartInfo { FileName = script, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden });
         }
 
-        private static Dictionary<string, object> ApiObject(string path, int maxJson = 1024 * 1024)
-        {
-            return WebRequests.Retry(() =>
-            {
-                var req = WebRequests.Create("https://api.github.com" + path, 15000);
-                req.Accept = "application/vnd.github+json";
-                req.Headers["X-GitHub-Api-Version"] = "2022-11-28";
-                return new JavaScriptSerializer { MaxJsonLength = maxJson }.Deserialize<Dictionary<string, object>>(WebRequests.ReadUtf8(req));
-            }, 3);
-        }
-
         private static string ReadTextWithRetry(string url)
         {
             // Ручная проверка должна быстро вернуть понятную ошибку, а не держать
             // интерфейс до 45 секунд на трёх системных таймаутах.
             return WebRequests.Retry(() => WebRequests.ReadUtf8(WebRequests.Create(url, 8000)), 1);
-        }
-
-        private static string DecodeContent(Dictionary<string, object> obj)
-        {
-            string enc = obj != null && obj.ContainsKey("encoding") ? Convert.ToString(obj["encoding"]) : "";
-            string content = obj != null && obj.ContainsKey("content") ? Convert.ToString(obj["content"]) : "";
-            if (enc != "base64" || string.IsNullOrEmpty(content)) throw new InvalidDataException("GitHub не вернул содержимое файла");
-            return Encoding.UTF8.GetString(Convert.FromBase64String(content.Replace("\n", "")));
         }
 
         private static bool IsGitSha(string value)
@@ -154,6 +135,22 @@ namespace RedOSPackageUpdater
             foreach (char c in value)
                 if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
             return true;
+        }
+
+        internal static bool IsSha256(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length != 64) return false;
+            foreach (char c in value)
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+            return true;
+        }
+
+        internal static string BatchLiteral(string value)
+        {
+            // Внутри batch-файла знак процента раскрывает переменные окружения
+            // даже в кавычках. Удваиваем его, чтобы редкий, но допустимый путь с
+            // '%' не ломал автоматическое обновление.
+            return (value ?? "").Replace("%", "%%");
         }
 
         private static void ValidateExecutable(string path)

@@ -33,6 +33,9 @@ for %%P in (profiles\*.sh) do set RES=!RES! /resource:"%%P","%%~nxP"
 REM --- compact FSTEC applicability catalog for offline first run ---
 if exist data\linux-bdu.zip set RES=!RES! /resource:"data\linux-bdu.zip","linux-bdu.zip"
 
+REM --- approved optical app-icon frames used by sidebar/title bar ---
+for %%I in (assets\app-icon\app-icon-*.png) do set RES=!RES! /resource:"%%I","%%~nxI"
+
 REM --- icon (exe file + window) ---
 set ICON=
 if exist icon.ico (

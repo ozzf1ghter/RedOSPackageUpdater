@@ -4,6 +4,7 @@ preview_*/
 run_*/
 vuln_*/
 reports/
+report-*.zip
 _to_delete/
 
 # Временные файлы и резервные сборки

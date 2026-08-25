@@ -34,6 +34,7 @@ namespace RedOSPackageUpdater
         public ModernButtonKind Kind { get { return _kind; } set { _kind = value; Invalidate(); } }
         public bool NavigationActive { get; set; }
         public string NavigationIcon { get; set; }
+        public string IconName { get; set; }
 
         public ModernButton()
         {
@@ -82,52 +83,35 @@ namespace RedOSPackageUpdater
             if (_kind == ModernButtonKind.Navigation && NavigationActive)
                 using (var brush = new SolidBrush(Color.FromArgb(112, 157, 255))) e.Graphics.FillRectangle(brush, 0, 8, 3, Math.Max(1, Height - 16));
             if (_kind == ModernButtonKind.Navigation && !string.IsNullOrEmpty(NavigationIcon))
-                DrawNavigationIcon(e.Graphics, NavigationIcon, fore, new Rectangle(16, Height / 2 - 8, 16, 16));
+                AppIcons.Draw(e.Graphics, NavigationIcon, fore, new Rectangle(16, Height / 2 - 9, 18, 18));
+            bool hasIcon = !string.IsNullOrEmpty(IconName);
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
             flags |= TextAlign == ContentAlignment.MiddleLeft ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter;
-            Rectangle textRect = new Rectangle(Padding.Left + 3, 0, Math.Max(1, Width - Padding.Horizontal - 6), Height);
+            int iconOffset = hasIcon ? 22 : 0;
+            Rectangle textRect;
+            if (hasIcon && TextAlign != ContentAlignment.MiddleLeft)
+            {
+                // Centre the icon and caption as one optical group. Previously the
+                // icon was pinned to x=10 while the caption was centred separately.
+                // That made every command button look visibly lopsided.
+                Size measured = TextRenderer.MeasureText(Text ?? "", Font, new Size(int.MaxValue, Height),
+                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                int groupWidth = 16 + 7 + Math.Min(measured.Width, Math.Max(0, Width - 30));
+                int groupLeft = Math.Max(8, (Width - groupWidth) / 2);
+                AppIcons.Draw(e.Graphics, IconName, fore, new Rectangle(groupLeft, Height / 2 - 8, 16, 16));
+                textRect = new Rectangle(groupLeft + 23, 0, Math.Max(1, Width - groupLeft - 27), Height);
+                flags &= ~TextFormatFlags.HorizontalCenter;
+                flags |= TextFormatFlags.Left;
+            }
+            else
+            {
+                if (hasIcon) AppIcons.Draw(e.Graphics, IconName, fore, new Rectangle(10, Height / 2 - 8, 16, 16));
+                textRect = new Rectangle(Padding.Left + 3 + iconOffset, 0, Math.Max(1, Width - Padding.Horizontal - 6 - iconOffset), Height);
+            }
             TextRenderer.DrawText(e.Graphics, Text, Font, textRect, fore, flags);
             if (Focused && ShowFocusCues)
                 using (GraphicsPath path = Rounded(new Rectangle(2, 2, Math.Max(1, Width - 5), Math.Max(1, Height - 5)), Math.Max(3, CornerRadius - 2)))
                 using (var pen = new Pen(Color.FromArgb(150, Theme.Accent))) { pen.DashStyle = DashStyle.Dot; e.Graphics.DrawPath(pen, path); }
-        }
-
-        private static void DrawNavigationIcon(Graphics g, string icon, Color color, Rectangle r)
-        {
-            using (var pen = new Pen(color, 1.6F))
-            {
-                pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round; pen.LineJoin = LineJoin.Round;
-                if (icon == "servers")
-                {
-                    g.DrawRectangle(pen, r.X + 1, r.Y + 1, 14, 5); g.DrawRectangle(pen, r.X + 1, r.Y + 10, 14, 5);
-                    using (var brush = new SolidBrush(color)) { g.FillEllipse(brush, r.X + 3, r.Y + 3, 2, 2); g.FillEllipse(brush, r.X + 3, r.Y + 12, 2, 2); }
-                }
-                else if (icon == "operations")
-                {
-                    g.DrawLine(pen, r.X + 2, r.Y + 4, r.Right - 2, r.Y + 4); g.DrawLine(pen, r.X + 2, r.Y + 8, r.Right - 5, r.Y + 8); g.DrawLine(pen, r.X + 2, r.Y + 12, r.Right - 8, r.Y + 12);
-                }
-                else if (icon == "fstec")
-                {
-                    Point[] shield = { new Point(r.X + 8, r.Y + 1), new Point(r.Right - 1, r.Y + 4), new Point(r.Right - 3, r.Y + 12), new Point(r.X + 8, r.Bottom - 1), new Point(r.X + 3, r.Y + 12), new Point(r.X + 1, r.Y + 4) };
-                    g.DrawPolygon(pen, shield); g.DrawLine(pen, r.X + 5, r.Y + 8, r.X + 7, r.Y + 10); g.DrawLine(pen, r.X + 7, r.Y + 10, r.X + 11, r.Y + 6);
-                }
-                else if (icon == "reports")
-                {
-                    g.DrawRectangle(pen, r.X + 2, r.Y + 1, 12, 14); g.DrawLine(pen, r.X + 5, r.Y + 5, r.X + 11, r.Y + 5); g.DrawLine(pen, r.X + 5, r.Y + 9, r.X + 11, r.Y + 9);
-                }
-                else if (icon == "access")
-                {
-                    g.DrawEllipse(pen, r.X + 1, r.Y + 5, 7, 7); g.DrawLine(pen, r.X + 8, r.Y + 8, r.Right - 1, r.Y + 8); g.DrawLine(pen, r.X + 12, r.Y + 8, r.X + 12, r.Y + 11);
-                }
-                else if (icon == "settings")
-                {
-                    g.DrawEllipse(pen, r.X + 2, r.Y + 2, 12, 12); g.DrawEllipse(pen, r.X + 6, r.Y + 6, 4, 4); g.DrawLine(pen, r.X + 8, r.Y, r.X + 8, r.Y + 3); g.DrawLine(pen, r.X + 8, r.Bottom - 3, r.X + 8, r.Bottom);
-                }
-                else
-                {
-                    using (var brush = new SolidBrush(color)) { g.FillEllipse(brush, r.X + 2, r.Y + 7, 3, 3); g.FillEllipse(brush, r.X + 7, r.Y + 7, 3, 3); g.FillEllipse(brush, r.X + 12, r.Y + 7, 3, 3); }
-                }
-            }
         }
 
         private void GetPalette(out Color normal, out Color hover, out Color fore, out Color border)

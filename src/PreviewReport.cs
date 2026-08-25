@@ -12,23 +12,17 @@ namespace RedOSPackageUpdater
         public static string Build(List<HostPreview> res, string dir)
         {
             var sb = new StringBuilder();
-            sb.Append("<!doctype html><html><head><meta charset='utf-8'><title>Предпроверка обновлений</title><style>");
-            sb.Append("body{font-family:Segoe UI,Arial,sans-serif;margin:20px;color:#222}h1{font-size:20px}");
-            sb.Append("h2{font-size:16px;margin-top:22px;border-bottom:2px solid #ccc;padding-bottom:4px}");
-            sb.Append("h3{font-size:14px;margin:14px 0 4px}table{border-collapse:collapse;width:100%;margin:6px 0 14px;font-size:13px}");
-            sb.Append("th,td{border:1px solid #ddd;padding:4px 8px;text-align:left}th{background:#f3f3f3}");
-            sb.Append("tr.sec{background:#fff6e5}.excl{color:#999;text-decoration:line-through}.err{color:#b00}.muted{color:#777}");
-            sb.Append(".badge{display:inline-block;background:#e01a22;color:#fff;border-radius:3px;padding:0 5px;font-size:11px}");
-            sb.Append(".dep{display:inline-block;background:#6c757d;color:#fff;border-radius:3px;padding:0 5px;font-size:11px}");
-            sb.Append(".kern{display:inline-block;background:#1e6fd0;color:#fff;border-radius:3px;padding:0 5px;font-size:11px}");
-            sb.Append(".skip{display:inline-block;background:#999;color:#fff;border-radius:3px;padding:0 5px;font-size:11px}");
-            sb.Append("</style></head><body>");
-            sb.Append("<h1>Предпроверка: что реально изменит транзакция профиля</h1>");
+            sb.Append("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Предпроверка обновлений</title><style>");
+            sb.Append(":root{--bg:#f4f6f9;--surface:#fff;--text:#1b2433;--muted:#657082;--line:#dadee7;--accent:#265bcf;--tint:#ebf2ff;--warn:#b57d0b;--danger:#c93a3a}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px 'Segoe UI',Arial,sans-serif}");
+            sb.Append("header{background:var(--surface);border-top:4px solid var(--accent);padding:24px clamp(18px,4vw,48px);border-bottom:1px solid var(--line)}h1{font-size:24px;margin:0 0 6px;letter-spacing:-.3px}.wrap{max-width:1800px;margin:auto;padding:22px clamp(14px,4vw,48px)}h2{font-size:18px;margin:28px 0 10px}h3{font-size:14px;margin:18px 0 6px}");
+            sb.Append(".cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}.card,table{background:var(--surface);border:1px solid var(--line);box-shadow:0 2px 8px rgba(27,36,51,.04);border-radius:9px}.card{padding:15px 18px}.num{font-size:25px;font-weight:650}table{border-collapse:separate;border-spacing:0;width:100%;margin:7px 0 16px;font-size:12px;overflow:hidden}th,td{padding:9px 10px;text-align:left;border-bottom:1px solid #e8ebf0}th{background:#f7f8fa;color:var(--muted);font-weight:600}tr:last-child td{border-bottom:0}tr:hover{background:#f2f6ff}");
+            sb.Append("tr.sec{background:#fff8e8}.excl{color:#8c94a1;text-decoration:line-through}.err{color:var(--danger)}.muted{color:var(--muted)}.badge,.dep,.kern,.skip{display:inline-block;border-radius:5px;padding:2px 7px;font-size:11px}.badge{background:#feecec;color:var(--danger)}.dep{background:#eef0f4;color:#536071}.kern{background:var(--tint);color:var(--accent)}.skip{background:#eef0f4;color:#737d8c}@media(max-width:760px){.wrap{padding:14px}table{display:block;overflow-x:auto;white-space:nowrap}}</style></head><body>");
+            sb.Append("<header><h1>Предпроверка обновлений</h1><div class=muted>Что реально изменит транзакция выбранного профиля</div></header><main class=wrap>");
 
             int totalPkgs = 0, totalSec = 0, totalDep = 0;
             foreach (var h in res) { totalPkgs += h.Total; totalSec += h.Sec; totalDep += h.Dep; }
-            sb.Append("<p class=muted>Сформировано: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") + " &nbsp; Узлов: " + res.Count + "</p>");
-            sb.Append("<p><b>Всего в транзакции:</b> " + totalPkgs + " (по advisory: " + totalSec + ", зависимости: " + totalDep + ")</p>");
+            sb.Append("<p class=muted>Сформировано: " + DateTime.Now.ToString("dd.MM.yyyy HH:mm") + "</p>");
+            sb.Append("<div class=cards><div class=card><div class=num>" + res.Count + "</div><div class=muted>серверов</div></div><div class=card><div class=num>" + totalPkgs + "</div><div class=muted>пакетов в транзакции</div></div><div class=card><div class=num>" + totalSec + "</div><div class=muted>по advisory</div></div><div class=card><div class=num>" + totalDep + "</div><div class=muted>зависимостей</div></div></div>");
             sb.Append("<p class=muted>Категории: <span class=badge>security</span> - есть уязвимость; <span class=dep>зависимость</span> - тянется резолвером (своего advisory нет); <span class=kern>ядро</span>; <span class=skip>будет пропущен</span> - исключён маской.</p>");
 
             foreach (var sys in DistinctSystems(res))
@@ -41,7 +35,7 @@ namespace RedOSPackageUpdater
                 }
             }
 
-            sb.Append("</body></html>");
+            sb.Append("</main></body></html>");
             string path = Path.Combine(dir, "preview.html");
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
             return path;

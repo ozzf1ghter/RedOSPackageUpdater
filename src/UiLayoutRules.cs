@@ -24,10 +24,10 @@ namespace RedOSPackageUpdater
             // При меньшей ширине длинный итоговый статус скрывается из верхней
             // строки (полный текст остаётся в нижней строке состояния/tooltip),
             // чтобы не перекрывать кнопки запуска.
-            result.Compact = width < 960;
-            result.PreviewWidth = result.Compact ? 112 : 130;
-            result.RunWidth = result.Compact ? 158 : 174;
-            result.StopWidth = result.Compact ? 64 : 72;
+            result.Compact = width < 1024;
+            result.PreviewWidth = result.Compact ? 128 : 146;
+            result.RunWidth = result.Compact ? 176 : 194;
+            result.StopWidth = result.Compact ? 74 : 82;
             int right = width - 12;
             result.StatusLeft = right - statusWidth;
             int actionRight = result.Compact ? right : result.StatusLeft - 8;

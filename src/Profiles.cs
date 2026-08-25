@@ -16,7 +16,6 @@ namespace RedOSPackageUpdater
         public const string PreStop = "redos_prestop.sh";
         public const string PostCheck = "redos_postcheck.sh";
         public const string PkgOp = "redos_pkgop.sh";
-        public const string VulnScan = "redos_vuln_scan.sh";
         public const string AdvisoryScan = "redos_advisory_scan.sh";
 
         // Скрипты неизменны в течение жизни процесса (это embedded resources внутри самого exe),
@@ -38,6 +37,29 @@ namespace RedOSPackageUpdater
                     using (var r = new StreamReader(s, Encoding.UTF8))
                     {
                         string text = r.ReadToEnd().Replace("\r\n", "\n").Replace("\r", "\n");
+                        _cache[resourceName] = text;
+                        return text;
+                    }
+                }
+            }
+        }
+
+        // Необязательные ресурсы (например, seed персональной сборки) отсутствуют
+        // в обычном публичном EXE. Их отсутствие — штатный случай, а не повреждение.
+        public static string TryRead(string resourceName)
+        {
+            if (string.IsNullOrWhiteSpace(resourceName)) return null;
+            lock (_cacheLock)
+            {
+                string cached;
+                if (_cache.TryGetValue(resourceName, out cached)) return cached;
+                var asm = Assembly.GetExecutingAssembly();
+                using (Stream stream = asm.GetManifestResourceStream(resourceName))
+                {
+                    if (stream == null) return null;
+                    using (var reader = new StreamReader(stream, Encoding.UTF8))
+                    {
+                        string text = reader.ReadToEnd().Replace("\r\n", "\n").Replace("\r", "\n");
                         _cache[resourceName] = text;
                         return text;
                     }

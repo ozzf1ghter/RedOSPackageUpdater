@@ -15,6 +15,7 @@
 export LC_ALL=C
 export COLUMNS=200   # не даём dnf переносить длинные NEVRA - иначе парсер теряет строки
 set -f   # имена пакетов не разворачиваем по файлам
+[ "$(id -u)" -eq 0 ] || { echo "PKGOP_ERR|Операция должна выполняться от root"; echo "PKGOP_RESULT: FAIL"; echo "REBOOT_RECOMMENDED: no"; exit 1; }
 
 ACTION="${ACTION:-update}"
 PKGS="${PKGS:-}"

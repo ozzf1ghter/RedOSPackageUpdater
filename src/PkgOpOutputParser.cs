@@ -8,7 +8,6 @@ namespace RedOSPackageUpdater
     {
         public string Result;
         public string RebootRecommended;
-        public string TrivyInstalled;
         public int Changed;
         public int VulnerabilityTotal;
         public int VulnerabilityBdu;
@@ -25,8 +24,7 @@ namespace RedOSPackageUpdater
             var parsed = new PkgOpParseResult
             {
                 Result = Marker(output, "PKGOP_RESULT"),
-                RebootRecommended = Marker(output, "REBOOT_RECOMMENDED"),
-                TrivyInstalled = Marker(output, "TRIVY_INSTALLED")
+                RebootRecommended = Marker(output, "REBOOT_RECOMMENDED")
             };
             var errors = new List<string>();
             foreach (string raw in (output ?? "").Split('\n'))

@@ -8,6 +8,9 @@ namespace RedOSPackageUpdater
         public static void Normalize(AppConfig config)
         {
             if (config == null) throw new ArgumentNullException("config");
+            if (config.Version > AppConfig.CurrentSchemaVersion)
+                throw new InvalidOperationException("Конфигурация создана более новой версией программы (схема " + config.Version + ")");
+            config.Version = AppConfig.CurrentSchemaVersion;
             if (config.Settings == null) config.Settings = new AppSettings();
             var defaults = new AppSettings();
             config.Settings.MaxParallel = NormalizeRange(config.Settings.MaxParallel, 1, 100, defaults.MaxParallel);
@@ -24,17 +27,23 @@ namespace RedOSPackageUpdater
             if (config.Credentials == null) config.Credentials = new List<Credential>();
             if (config.Systems == null) config.Systems = new List<SubSystem>();
             if (config.ExcludePackages == null) config.ExcludePackages = AppConfig.DefaultExcludePackages();
+            config.ExcludePackages = NormalizeStrings(config.ExcludePackages);
             if (string.IsNullOrWhiteSpace(config.RepoHost)) config.RepoHost = AppConfig.DefaultRepoHost;
             else config.RepoHost = config.RepoHost.Trim();
             if (config.RepoScripts == null || config.RepoScripts.Count == 0) config.RepoScripts = AppConfig.DefaultRepoScripts();
+            config.RepoScripts = NormalizeStrings(config.RepoScripts);
+            if (config.RepoScripts.Count == 0) config.RepoScripts = AppConfig.DefaultRepoScripts();
             if (!string.Equals(config.UiTheme, "dark", StringComparison.OrdinalIgnoreCase)) config.UiTheme = "light";
 
             config.Credentials.RemoveAll(c => c == null);
+            foreach (Credential credential in config.Credentials)
+                credential.User = string.IsNullOrWhiteSpace(credential.User) ? "root" : credential.User.Trim();
             config.Systems.RemoveAll(s => s == null);
             foreach (SubSystem system in config.Systems)
             {
                 system.Name = (system.Name ?? "").Trim();
                 if (system.Services == null) system.Services = new List<string>();
+                system.Services = NormalizeStrings(system.Services);
                 if (system.Nodes == null) system.Nodes = new List<Node>();
                 system.Nodes.RemoveAll(n => n == null);
                 foreach (Node node in system.Nodes)
@@ -51,6 +60,18 @@ namespace RedOSPackageUpdater
         {
             if (value < min) return fallback;
             return value > max ? max : value;
+        }
+
+        private static List<string> NormalizeStrings(IEnumerable<string> source)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string raw in source ?? new string[0])
+            {
+                string value = (raw ?? "").Trim();
+                if (value.Length > 0 && seen.Add(value)) result.Add(value);
+            }
+            return result;
         }
     }
 }

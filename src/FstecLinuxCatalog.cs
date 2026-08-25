@@ -31,7 +31,6 @@ namespace RedOSPackageUpdater
     internal static class FstecLinuxCatalog
     {
         private const string Url = "https://bdu.fstec.ru/files/documents/vulxml.zip";
-        private const string FallbackUrl = "https://raw.githubusercontent.com/ozzf1ghter/RedOSPackageUpdater/main/data/linux-bdu.zip";
         public static string CatalogPath { get { return Path.Combine(VulnerabilityDb.Dir, "linux-bdu.json"); } }
         public static bool Exists { get { return File.Exists(CatalogPath) && new FileInfo(CatalogPath).Length > 0; } }
 
@@ -41,18 +40,8 @@ namespace RedOSPackageUpdater
             string zip = Path.Combine(VulnerabilityDb.Dir, "vulxml.zip.download");
             try
             {
-                try
-                {
-                    Download(Url, zip, progress, ct);
-                    Build(zip, CatalogPath + ".tmp", ct);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch
-                {
-                    TryDelete(zip);
-                    Download(FallbackUrl, zip, progress, ct);
-                    ExtractCompactCatalog(zip, CatalogPath + ".tmp");
-                }
+                Download(Url, zip, progress, ct);
+                Build(zip, CatalogPath + ".tmp", ct);
                 FileSwap.Replace(CatalogPath + ".tmp", CatalogPath);
             }
             finally { TryDelete(zip); TryDelete(CatalogPath + ".tmp"); }
@@ -74,8 +63,13 @@ namespace RedOSPackageUpdater
         public static void Import(string zipPath, CancellationToken ct)
         {
             Directory.CreateDirectory(VulnerabilityDb.Dir);
-            Build(zipPath, CatalogPath + ".tmp", ct);
-            FileSwap.Replace(CatalogPath + ".tmp", CatalogPath);
+            string temporary = CatalogPath + ".tmp";
+            try
+            {
+                Build(zipPath, temporary, ct);
+                FileSwap.Replace(temporary, CatalogPath);
+            }
+            finally { TryDelete(temporary); }
         }
 
         internal static void BuildForDistribution(string zipPath, string output, CancellationToken ct)
@@ -85,17 +79,8 @@ namespace RedOSPackageUpdater
 
         public static int Enrich(List<HostResult> results)
         {
-            EnsureBundledCatalog();
-            if (!Exists || results == null) return 0;
-            List<LinuxBduRecord> catalog;
-            try
-            {
-                var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-                catalog = ser.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(CatalogPath, Encoding.UTF8));
-                if (!HasApplicabilitySchema(catalog) && InstallBundledCatalog())
-                    catalog = ser.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(CatalogPath, Encoding.UTF8));
-            }
-            catch { return 0; }
+            if (results == null) throw new ArgumentNullException("results");
+            List<LinuxBduRecord> catalog = LoadCatalog();
             var byId = catalog.Where(r => r != null && !string.IsNullOrWhiteSpace(r.Id))
                 .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
@@ -137,6 +122,31 @@ namespace RedOSPackageUpdater
             return added;
         }
 
+        public static void EnsureReady()
+        {
+            LoadCatalog();
+        }
+
+        private static List<LinuxBduRecord> LoadCatalog()
+        {
+            EnsureBundledCatalog();
+            if (!Exists) throw new InvalidDataException("Каталог БДУ ФСТЭК отсутствует; обновите или импортируйте базу перед формированием отчёта");
+            List<LinuxBduRecord> catalog;
+            try
+            {
+                var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                catalog = ser.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(CatalogPath, Encoding.UTF8));
+                if ((!HasApplicabilitySchema(catalog) || IsLegacyUnfilteredCatalog(catalog)) && InstallBundledCatalog())
+                    catalog = ser.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(CatalogPath, Encoding.UTF8));
+            }
+            catch (Exception ex) { throw new InvalidDataException("Каталог БДУ ФСТЭК повреждён или имеет неподдерживаемый формат", ex); }
+            if (catalog == null || catalog.Count < 100)
+                throw new InvalidDataException("Каталог БДУ ФСТЭК пуст или неполон");
+            if (!HasApplicabilitySchema(catalog))
+                throw new InvalidDataException("Каталог БДУ ФСТЭК устарел: отсутствуют данные применимости для поддерживаемых выпусков RED OS");
+            return catalog;
+        }
+
         // DNF updateinfo является доказательством именно от производителя RED OS: пакет на
         // узле уязвим и для него доступно исправление. Поэтому связанная БДУ подтверждается
         // даже когда старая карточка ФСТЭК ещё не перечисляет текущий выпуск RED OS либо
@@ -166,7 +176,7 @@ namespace RedOSPackageUpdater
                         Title = record.Title, PublishedDate = record.Published, LastModifiedDate = record.Modified,
                         PrimaryUrl = "https://bdu.fstec.ru/vul/" + record.Id.Substring(4),
                         DetectionKind = "REDOS_ADVISORY",
-                        AffectedRange = "Подтверждено доступным security advisory RED OS"
+                        AffectedRange = "Подтверждено доступным бюллетенем безопасности RED OS"
                     };
                     finding.Aliases.Add(source.Id.ToUpperInvariant());
                     foreach (string alias in source.Aliases ?? new List<string>()) AddUnique(finding.Aliases, alias);
@@ -193,10 +203,17 @@ namespace RedOSPackageUpdater
 
         private static bool HasApplicabilitySchema(List<LinuxBduRecord> records)
         {
-            LinuxBduRecord sentinel = (records ?? new List<LinuxBduRecord>()).FirstOrDefault(r =>
-                r != null && string.Equals(r.Id, "BDU:2026-05932", StringComparison.OrdinalIgnoreCase));
-            return sentinel != null && (sentinel.RedOsVersions ?? new List<string>()).Any(v => SameOsVersion("7.3", v)) &&
-                   (sentinel.RedOsVersions ?? new List<string>()).Any(v => SameOsVersion("8.0", v));
+            var values = (records ?? new List<LinuxBduRecord>())
+                .Where(record => record != null)
+                .SelectMany(record => record.RedOsVersions ?? new List<string>()).ToList();
+            return values.Any(v => SameOsVersion("7.3", v)) && values.Any(v => SameOsVersion("8.0", v));
+        }
+
+        private static bool IsLegacyUnfilteredCatalog(List<LinuxBduRecord> records)
+        {
+            if (records == null || records.Count < 1000) return false;
+            int applicable = records.Count(ShouldIncludeRecord);
+            return applicable * 2 < records.Count;
         }
 
         private static void EnsureBundledCatalog()
@@ -231,7 +248,7 @@ namespace RedOSPackageUpdater
                 if (finding == null || !(finding.Id ?? "").StartsWith("BDU:", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(finding.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(finding.DetectionKind, "REDOS_ADVISORY", StringComparison.OrdinalIgnoreCase)) continue;
-                // RPM keeps several kernel versions intentionally. Trivy rootfs sees
+                // RPM intentionally keeps several kernel versions. Package inventories see
                 // every installed kernel RPM, but only uname -r identifies the code
                 // that is actually running. Old fallback kernels must remain in the
                 // full diagnostic report, not in confirmed active vulnerabilities.
@@ -282,6 +299,8 @@ namespace RedOSPackageUpdater
             {
                 ZipArchiveEntry entry = archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
                 if (entry == null) throw new InvalidDataException("В выгрузке ФСТЭК не найден XML-файл");
+                if (entry.Length > 8L * 1024 * 1024 * 1024)
+                    throw new InvalidDataException("XML-файл в архиве ФСТЭК превышает допустимый размер 8 ГБ");
                 using (Stream stream = entry.Open())
                 using (var reader = System.Xml.XmlReader.Create(stream, new System.Xml.XmlReaderSettings { IgnoreComments = true, DtdProcessing = System.Xml.DtdProcessing.Prohibit }))
                 {
@@ -308,10 +327,14 @@ namespace RedOSPackageUpdater
                             string value = Clean(alias.Value);
                             if (value.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) AddUnique(rec.Cves, value.ToUpperInvariant());
                         }
-                        if (rec.Versions.Count > 0 || rec.RedOsVersions.Count > 0 || id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) records.Add(rec);
+                        if (ShouldIncludeRecord(rec)) records.Add(rec);
                     }
                 }
             }
+            if (records.Count < 100)
+                throw new InvalidDataException("Выгрузка ФСТЭК не содержит ожидаемого количества записей; текущий каталог сохранён без изменений");
+            if (!records.Any(record => record.Cves != null && record.Cves.Count > 0))
+                throw new InvalidDataException("В выгрузке ФСТЭК не найдены связи с CVE; текущий каталог сохранён без изменений");
             var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             File.WriteAllText(output, serializer.Serialize(records), new UTF8Encoding(false));
         }
@@ -335,6 +358,13 @@ namespace RedOSPackageUpdater
                 if ((min.Length == 0 || Compare(current, min) >= 0) && (max.Length == 0 || Compare(current, max) <= 0)) { matched = raw; return true; }
             }
             return false;
+        }
+
+        internal static bool ShouldIncludeRecord(LinuxBduRecord record)
+        {
+            return record != null &&
+                ((record.Versions != null && record.Versions.Count > 0) ||
+                 (record.RedOsVersions != null && record.RedOsVersions.Count > 0));
         }
 
         private static string KernelVersion(string osInfo)

@@ -292,6 +292,18 @@ namespace RedOSPackageUpdater
             menu.BackColor = Surface; menu.ForeColor = Text; menu.Font = UiFont;
             menu.ShowImageMargin = false; menu.Padding = new Padding(5);
             menu.Renderer = new ToolStripProfessionalRenderer(new MenuColors());
+            menu.Opening += delegate
+            {
+                foreach (ToolStripItem item in menu.Items)
+                {
+                    var separator = item as ToolStripSeparator;
+                    if (separator != null) { separator.AutoSize = false; separator.Height = 9; continue; }
+                    item.AutoSize = false;
+                    item.Width = Math.Max(220, item.Width);
+                    item.Height = 32;
+                    item.Padding = new Padding(12, 0, 12, 0);
+                }
+            };
         }
 
         // ---- Подзаголовок секции (маленькая серая надпись капсом - "СЕРВЕРЫ", "ОЧЕРЕДЬ") ----

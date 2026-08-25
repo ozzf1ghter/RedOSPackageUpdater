@@ -36,3 +36,8 @@ grep -q '^VULN_ALIAS|CVE-2026-39316|cups|ROS-20260825-01$' <<<"$out"
 grep -q '^VULN_SUMMARY|2|0|2|0$' <<<"$out"
 grep -q '^PKGOP_RESULT: OK$' <<<"$out"
 echo 'OK   DNF advisory parser RED OS 8 fixture'
+
+unsupported="$(PATH="$root/bin:$PATH" RPU_OS_PRETTY_OVERRIDE='RED OS 9.0' RPU_OS_VERSION_OVERRIDE='9.0' bash profiles/redos_advisory_scan.sh || true)"
+grep -q '^PKGOP_ERR|RED OS 9.0 пока не поддерживается проверкой ФСТЭК$' <<<"$unsupported"
+grep -q '^PKGOP_RESULT: FAIL$' <<<"$unsupported"
+echo 'OK   unsupported RED OS release rejected'

@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace RedOSPackageUpdater
@@ -7,7 +9,7 @@ namespace RedOSPackageUpdater
     public partial class MainForm
     {
         private Label _serverDetailTitle, _serverDetailBody;
-        private Label _shellStatus;
+        private Label _shellStatus, _fstecDbState;
 
         private void BuildApplicationShell(Panel operationBar, Panel serverTree, SplitContainer operationContent)
         {
@@ -20,7 +22,7 @@ namespace RedOSPackageUpdater
 
             var navigation = new Panel { Dock = DockStyle.Left, Width = 214, BackColor = Theme.NavigationBg, Padding = new Padding(12, 12, 12, 12) };
             var brand = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = Theme.NavigationBg };
-            var brandMark = new Label { Left = 4, Top = 4, Width = 36, Height = 36, Text = "R", TextAlign = ContentAlignment.MiddleCenter, BackColor = Theme.Accent, ForeColor = Color.White, Font = Theme.UiFontBrandMark };
+            var brandMark = new AppIconView { Left = 4, Top = 4, Width = 36, Height = 36, BackColor = Theme.NavigationBg };
             var brandName = new Label { Left = 50, Top = 4, Width = 138, Height = 23, Text = "RED OS UPDATER", ForeColor = Color.White, Font = Theme.UiFontBrand };
             var brandSub = new Label { Left = 50, Top = 27, Width = 138, Height = 19, Text = "Центр управления", ForeColor = Theme.NavigationText, Font = Theme.UiFontBrandSmall };
             var navCaption = new Label { Left = 4, Top = 54, Width = 184, Height = 18, Text = "РАЗДЕЛЫ", ForeColor = Color.FromArgb(124, 142, 169), Font = Theme.UiFontSmall };
@@ -59,12 +61,13 @@ namespace RedOSPackageUpdater
             _tree.AfterSelect += delegate { RefreshServerDetails(); };
             ShowApplicationPage("servers");
             RefreshSelectionSummary();
+            RefreshServerDetails();
         }
 
         private Panel BuildServersPage(Panel serverTree)
         {
             var page = NewPage();
-            var head = BuildPageHeader("Серверы", "Инфраструктура, состояние и выбор целей", "+ Добавить узел", delegate { AddNode(); }, true);
+            var head = BuildPageHeader("Серверы", "Инфраструктура, состояние и выбор целей", "Добавить узел", delegate { AddNode(); }, true);
             page.Controls.Add(head);
 
             var body = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 320, FixedPanel = FixedPanel.Panel1, SplitterWidth = 8, BackColor = Theme.Bg };
@@ -81,8 +84,8 @@ namespace RedOSPackageUpdater
             _serverDetailTitle = new Label { Dock = DockStyle.Top, Height = 40, Font = Theme.UiFontPageTitle, ForeColor = Theme.Text };
             _serverDetailBody = new Label { Dock = DockStyle.Top, Height = 142, ForeColor = Theme.Text, Padding = new Padding(0, 8, 0, 0), Font = Theme.UiFontBodyLarge };
             var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
-            AddCompactBtn(actions, "Изменить", 90, delegate { EditSelected(); });
-            AddCompactBtn(actions, "Сервисы системы", 126, delegate { EditServices(); });
+            _btnEditSelection = AddCompactBtn(actions, "Изменить", 90, delegate { EditSelected(); });
+            _btnSystemServices = AddCompactBtn(actions, "Сервисы системы", 126, delegate { EditServices(); });
             var newOperation = AddCompactBtn(actions, "Новая операция", 120, delegate { ShowApplicationPage("operations"); }); Theme.Primary(newOperation);
             inventory.Controls.Add(actions); inventory.Controls.Add(_serverDetailBody); inventory.Controls.Add(_serverDetailTitle); inventory.Controls.Add(detailCaption);
             var guidance = new ModernCard { Dock = DockStyle.Top, Height = 108, BackColor = Theme.AccentTint, Padding = new Padding(18, 15, 18, 12) };
@@ -114,22 +117,30 @@ namespace RedOSPackageUpdater
         private Panel BuildFstecPage()
         {
             var page = NewPage();
-            var head = BuildPageHeader("Уязвимости ФСТЭК", "Проверка пакетов и активного ядра по локальной базе БДУ", "Обновить базу", delegate { UpdateVulnerabilityDb(); }, true);
+            var head = BuildPageHeader("Уязвимости ФСТЭК", "Бюллетени безопасности RED OS с локальным сопоставлением CVE и БДУ", "Обновить базу", delegate { UpdateVulnerabilityDb(); }, true);
             page.Controls.Add(head);
-            var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg };
-            var db = new ModernCard { Dock = DockStyle.Top, Height = 108, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(db);
+            var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg, AutoScroll = true };
+            var db = new ModernCard { Dock = DockStyle.Top, Height = 132, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(db);
             var dbTitle = new Label { Dock = DockStyle.Top, Height = 24, Text = "Локальная база уязвимостей", Font = Theme.UiFontBold };
-            var dbState = new Label { Dock = DockStyle.Top, Height = 28, Text = VulnerabilityDb.StatusText(), ForeColor = Theme.Good };
-            var dbHint = new Label { Dock = DockStyle.Fill, Text = "Серверы не обращаются в интернет — база передаётся с управляющего компьютера.", ForeColor = Theme.Muted };
-            db.Controls.Add(dbHint); db.Controls.Add(dbState); db.Controls.Add(dbTitle);
+            _fstecDbState = new Label { Dock = DockStyle.Top, Height = 25, Text = VulnerabilityDb.StatusText(), ForeColor = FstecLinuxCatalog.Exists ? Theme.Good : Theme.Warn };
+            var dbHint = new Label { Dock = DockStyle.Top, Height = 34, Text = "Узлы читают только локальные метаданные DNF. CVE связываются с каталогом БДУ на управляющем компьютере; интернет на серверах не требуется.", ForeColor = Theme.Muted };
+            _fstecProgressLabel = new Label { Dock = DockStyle.Bottom, Height = 20, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Theme.Muted, Visible = false };
+            _fstecProgress = new ModernProgressBar { Dock = DockStyle.Bottom, Height = 8, Minimum = 0, Maximum = 100, Visible = false };
+            db.Controls.Add(_fstecProgress); db.Controls.Add(_fstecProgressLabel); db.Controls.Add(dbHint); db.Controls.Add(_fstecDbState); db.Controls.Add(dbTitle);
 
             var launch = new ModernCard { Dock = DockStyle.Top, Height = 112, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(launch);
             var launchTitle = new Label { Dock = DockStyle.Top, Height = 26, Text = "Новая проверка", Font = Theme.UiFontBold };
             var launchHint = new Label { Dock = DockStyle.Top, Height = 27, Text = "Будут проверены выбранные на странице «Серверы» узлы.", ForeColor = Theme.Muted };
             var launchButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-            var run = LockConfiguration(AddCompactBtn(launchButtons, "Проверить выбранные", 158, delegate { RunVulnerabilityScan(); ShowApplicationPage("operations"); })); Theme.Primary(run);
+            _btnVulnerabilityScan = LockConfiguration(AddCompactBtn(launchButtons, "Проверить выбранные", 180, delegate { RunVulnerabilityScan(); ShowApplicationPage("operations"); })); Theme.Primary(_btnVulnerabilityScan);
             LockConfiguration(AddCompactBtn(launchButtons, "Импортировать базу", 142, delegate { ImportVulnerabilityDb(); }));
             launch.Controls.Add(launchButtons); launch.Controls.Add(launchHint); launch.Controls.Add(launchTitle);
+            var method = new TableLayoutPanel { Dock = DockStyle.Top, Height = 138, ColumnCount = 3, Padding = new Padding(0, 10, 0, 0), BackColor = Theme.Bg };
+            method.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F)); method.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F)); method.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
+            method.Controls.Add(InfoCard("1 · RED OS", "DNF сообщает доступные бюллетени безопасности и исправленные версии", "ТОЛЬКО ЧТЕНИЕ"), 0, 0);
+            method.Controls.Add(InfoCard("2 · БДУ ФСТЭК", "CVE сопоставляются с локальным официальным каталогом и применимостью", "АВТОНОМНО"), 1, 0);
+            method.Controls.Add(InfoCard("3 · Отчёт", "Записи группируются по пакету и единому действию обновления", "HTML · CSV"), 2, 0);
+            content.Controls.Add(method); content.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Theme.Bg });
             content.Controls.Add(launch); content.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Theme.Bg }); content.Controls.Add(db);
             page.Controls.Add(content); content.BringToFront();
             return page;
@@ -140,7 +151,7 @@ namespace RedOSPackageUpdater
             var page = NewPage();
             var head = BuildPageHeader("Отчёты", "История операций и проверок уязвимостей", "Открыть папку", delegate { OpenReportsFolder(); });
             page.Controls.Add(head);
-            var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg };
+            var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg, AutoScroll = true };
             var info = new ModernCard { Dock = DockStyle.Top, Height = 86, BackColor = Theme.Surface, Padding = new Padding(18) }; Theme.Box(info);
             var title = new Label { Dock = DockStyle.Top, Height = 26, Text = "Все результаты собраны в одном месте", Font = Theme.UiFontHeadingLarge };
             var path = new Label { Dock = DockStyle.Fill, Text = "Каталог хранения: " + Store.LogsDir, ForeColor = Theme.Muted };
@@ -153,7 +164,7 @@ namespace RedOSPackageUpdater
             kinds.Controls.Add(InfoCard("Предпроверки", "Состав транзакции до внесения изменений", "CSV"), 0, 0);
             kinds.Controls.Add(InfoCard("Операции", "Сводка по узлам и подробные журналы", "LOG"), 1, 0);
             kinds.Controls.Add(InfoCard("Уязвимости", "Подтверждённые БДУ и полный набор кандидатов", "HTML · CSV"), 2, 0);
-            content.Controls.Add(kinds); content.Controls.Add(actions); content.Controls.Add(info);
+            content.Controls.Add(BuildRecentReportsCard()); content.Controls.Add(kinds); content.Controls.Add(actions); content.Controls.Add(info);
             page.Controls.Add(content); content.BringToFront();
             return page;
         }
@@ -161,7 +172,7 @@ namespace RedOSPackageUpdater
         private Panel BuildAccessPage()
         {
             var page = NewPage();
-            var head = BuildPageHeader("Доступ и SSH", "Учётные записи, кеш подключений и доверенные ключи", "Добавить учётку", delegate { EditCredentials(); RefreshAccessPage(); }, true);
+            var head = BuildPageHeader("Доступ и SSH", "Учётные записи, кэш подключений и доверенные ключи", "Добавить учётку", delegate { EditCredentials(); RefreshAccessPage(); }, true);
             page.Controls.Add(head);
             var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg };
             var accounts = new ModernCard { Name = "accounts", Dock = DockStyle.Top, Height = 178, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(accounts);
@@ -171,7 +182,7 @@ namespace RedOSPackageUpdater
             var sshHint = new Label { Dock = DockStyle.Top, Height = 32, Text = "Неизвестные ключи подтверждаются оператором. Для массовой операции подтверждение может действовать на весь текущий запуск.", ForeColor = Theme.Muted };
             var sshActions = new FlowLayoutPanel { Dock = DockStyle.Fill };
             LockConfiguration(AddCompactBtn(sshActions, "Управление ключами", 146, delegate { ManageHostKeys(); }));
-            LockConfiguration(AddCompactBtn(sshActions, "Очистить кеш учёток", 148, delegate { _cache.Clear(); Store.SaveCache(_cache); SetStatus("Кеш учёток очищен"); }));
+            LockConfiguration(AddCompactBtn(sshActions, "Очистить кэш учёток", 154, delegate { _cache.Clear(); Store.SaveCache(_cache); SetStatus("Кэш учёток очищен"); }));
             ssh.Controls.Add(sshActions); ssh.Controls.Add(sshHint); ssh.Controls.Add(sshTitle);
             content.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Theme.Bg }); content.Controls.Add(ssh); ssh.BringToFront();
             page.Controls.Add(content); content.BringToFront();
@@ -201,7 +212,7 @@ namespace RedOSPackageUpdater
         {
             DisposeChildren(accounts);
             var title = new Label { Dock = DockStyle.Top, Height = 25, Text = "Учётные записи SSH · " + _cfg.Credentials.Count, Font = Theme.UiFontBold };
-            var hint = new Label { Dock = DockStyle.Top, Height = 30, Text = "Пароли скрыты. Подходящая учётная запись кешируется отдельно для каждого узла.", ForeColor = Theme.Muted };
+            var hint = new Label { Dock = DockStyle.Top, Height = 30, Text = "Пароли скрыты. Подходящая учётная запись кэшируется отдельно для каждого узла.", ForeColor = Theme.Muted };
             var rows = new TextBox { Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, BorderStyle = BorderStyle.None, BackColor = Theme.Surface, ForeColor = Theme.Text };
             var lines = new System.Collections.Generic.List<string>();
             foreach (var c in _cfg.Credentials) lines.Add((string.IsNullOrEmpty(c.User) ? "root" : c.User) + "     ••••••••");
@@ -226,7 +237,7 @@ namespace RedOSPackageUpdater
                 "Попыток авторизации: " + (_cfg.Settings.MaxAuthAttempts == 0 ? "все" : _cfg.Settings.MaxAuthAttempts.ToString())
             });
             var reboot = SettingsCard("Перезагрузка и сервисы", new string[] {
-                "Пауза после reboot: " + _cfg.Settings.InitialRebootDelaySec + " сек.",
+                "Пауза после перезагрузки: " + _cfg.Settings.InitialRebootDelaySec + " сек.",
                 "Ожидание возврата: " + _cfg.Settings.UpTimeoutSec + " сек.",
                 "Остановка сервиса: " + _cfg.Settings.StopServiceTimeoutSec + " сек.",
                 "Бэкапов на узле: " + _cfg.Settings.BackupKeep
@@ -258,7 +269,7 @@ namespace RedOSPackageUpdater
         private Panel InfoCard(string title, string text, string badge)
         {
             var card = new ModernCard { Dock = DockStyle.Fill, BackColor = Theme.Surface, Margin = new Padding(0, 0, 10, 0), Padding = new Padding(16) }; Theme.Box(card);
-            var mark = new Label { Dock = DockStyle.Right, Width = 74, Height = 24, Text = badge, TextAlign = ContentAlignment.TopRight, ForeColor = Theme.Accent, Font = Theme.UiFontBold };
+            var mark = new Label { Dock = DockStyle.Right, Width = 116, Height = 24, Text = badge, TextAlign = ContentAlignment.TopRight, ForeColor = Theme.Accent, Font = Theme.UiFontBold, AutoEllipsis = true };
             var heading = new Label { Dock = DockStyle.Top, Height = 26, Text = title, Font = Theme.UiFontHeading, ForeColor = Theme.Text };
             var body = new Label { Dock = DockStyle.Fill, Text = text, ForeColor = Theme.Muted, Padding = new Padding(0, 8, 6, 0) };
             card.Controls.Add(body); card.Controls.Add(mark); card.Controls.Add(heading); return card;
@@ -296,6 +307,14 @@ namespace RedOSPackageUpdater
             Theme.Secondary(actionButton); actionButton.Click += delegate { if (action != null) action(); };
             if (lockWhileRunning) LockConfiguration(actionButton);
             head.Controls.Add(actionButton); head.Controls.Add(subtitleLabel); head.Controls.Add(titleLabel);
+            Action layout = delegate
+            {
+                int available = Math.Max(120, actionButton.Left - 28);
+                titleLabel.Width = available;
+                subtitleLabel.Width = available;
+            };
+            head.Resize += delegate { layout(); };
+            layout();
             return head;
         }
 
@@ -352,6 +371,12 @@ namespace RedOSPackageUpdater
             if (_selectionLabel != null) _selectionLabel.Text = "Выбрано серверов: " + selected + " из " + total;
             if (_shellStatus != null) _shellStatus.Text = _running ? "Выполняется операция" : "Готово · выбрано " + selected + " серверов";
             if (_btnRun != null && !_running) _btnRun.Text = selected > 0 ? "Запустить на " + selected + " узлах" : "Запустить отмеченные";
+            if (!_running)
+            {
+                if (_btnRun != null) _btnRun.Enabled = selected > 0;
+                if (_btnPreview != null) _btnPreview.Enabled = selected > 0;
+                if (_btnVulnerabilityScan != null) _btnVulnerabilityScan.Enabled = selected > 0;
+            }
         }
 
         private void RefreshServerDetails()
@@ -360,6 +385,8 @@ namespace RedOSPackageUpdater
             var selected = _tree.SelectedNode;
             var node = selected == null ? null : selected.Tag as Node;
             var system = selected == null ? null : selected.Tag as SubSystem;
+            if (_btnEditSelection != null) _btnEditSelection.Enabled = selected != null && !_running;
+            if (_btnSystemServices != null) _btnSystemServices.Enabled = selected != null && !_running;
             if (node != null)
             {
                 _serverDetailTitle.Text = string.IsNullOrEmpty(node.Name) ? node.Host : node.Name;
@@ -371,7 +398,44 @@ namespace RedOSPackageUpdater
                 _serverDetailTitle.Text = system.Name;
                 _serverDetailBody.Text = "Узлов: " + system.Nodes.Count + "\r\n\r\nСервисы перед перезагрузкой:\r\n" + (system.Services.Count == 0 ? "Не настроены" : string.Join(", ", system.Services.ToArray()));
             }
-            else { _serverDetailTitle.Text = "Выберите сервер"; _serverDetailBody.Text = "Здесь появятся адрес, система, роль и доступные действия."; }
+            else
+            {
+                int total = 0, enabled = 0;
+                foreach (SubSystem item in _cfg.Systems)
+                    foreach (Node server in item.Nodes) { total++; if (server.Enabled) enabled++; }
+                _serverDetailTitle.Text = "Инфраструктура";
+                _serverDetailBody.Text = "Систем\r\n" + _cfg.Systems.Count + "\r\n\r\nСерверов\r\n" + total +
+                    " (доступно для операций: " + enabled + ")\r\n\r\nВыберите систему или сервер слева для подробностей.";
+            }
+        }
+
+        private Control BuildRecentReportsCard()
+        {
+            var card = new ModernCard { Dock = DockStyle.Top, Height = 190, BackColor = Theme.Surface, Padding = new Padding(14), Margin = new Padding(0, 12, 0, 0) };
+            Theme.Box(card);
+            var title = new Label { Dock = DockStyle.Top, Height = 26, Text = "Последние запуски", Font = Theme.UiFontBold };
+            var list = new ModernListView { Dock = DockStyle.Fill, View = View.Details };
+            list.Columns.Add("Каталог", 290); list.Columns.Add("Тип", 140); list.Columns.Add("Изменён", 160);
+            try
+            {
+                Store.EnsureDirs();
+                foreach (DirectoryInfo directory in new DirectoryInfo(Store.LogsDir).GetDirectories().OrderByDescending(d => d.LastWriteTime).Take(5))
+                {
+                    string kind = directory.Name.StartsWith("vuln_", StringComparison.OrdinalIgnoreCase) ? "ФСТЭК" :
+                        directory.Name.StartsWith("preview_", StringComparison.OrdinalIgnoreCase) ? "Предпроверка" : "Операция";
+                    var row = new ListViewItem(directory.Name) { Tag = directory.FullName };
+                    row.SubItems.Add(kind); row.SubItems.Add(directory.LastWriteTime.ToString("dd.MM.yyyy HH:mm")); list.Items.Add(row);
+                }
+            }
+            catch (Exception ex) { list.Items.Add(new ListViewItem("Не удалось прочитать историю: " + ex.Message)); }
+            if (list.Items.Count == 0) list.Items.Add(new ListViewItem("История пока пуста"));
+            list.DoubleClick += delegate
+            {
+                if (list.SelectedItems.Count > 0 && list.SelectedItems[0].Tag is string)
+                    OpenPath((string)list.SelectedItems[0].Tag);
+            };
+            card.Controls.Add(list); card.Controls.Add(title);
+            return card;
         }
 
         private void ShowShellMenu(Control anchor)

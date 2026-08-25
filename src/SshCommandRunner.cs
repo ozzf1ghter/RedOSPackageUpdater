@@ -62,10 +62,14 @@ namespace RedOSPackageUpdater
                     try { command.EndExecute(execution); }
                     catch (Exception ex)
                     {
-                        string reason = Volatile.Read(ref cancelled) != 0 ? "отменено пользователем" :
-                            (Volatile.Read(ref timedOut) != 0 ? "превышен таймаут " + timeoutSec + " c" : ex.Message);
+                        bool wasCancelled = Volatile.Read(ref cancelled) != 0;
+                        bool wasTimedOut = Volatile.Read(ref timedOut) != 0;
+                        string reason = wasCancelled ? "отменено пользователем" :
+                            (wasTimedOut ? "превышен таймаут " + timeoutSec + " c" : ex.Message);
                         if (lineLog != null) lineLog("[команда прервана: " + reason + "]");
-                        output.Append("\n[TIMEOUT_OR_ERROR]");
+                        if (wasCancelled) throw new OperationCanceledException("SSH-команда отменена пользователем", ex, cancellation);
+                        if (wasTimedOut) throw new TimeoutException("SSH-команда превысила таймаут " + timeoutSec + " с", ex);
+                        throw new IOException("SSH-команда завершилась ошибкой канала: " + ex.Message, ex);
                     }
                 }
             }

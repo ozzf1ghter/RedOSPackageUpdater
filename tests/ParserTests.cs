@@ -26,18 +26,30 @@ internal static class ParserTests
             "VULN_SUMMARY|1|1|0|1\n" +
             "PKGOP_ERR|первый пакет не найден\n" +
             "PKGOP_ERR|второй пакет не найден\n" +
-            "PKGOP_RESULT: OK\nREBOOT_RECOMMENDED: no\nTRIVY_INSTALLED: yes\n";
+            "PKGOP_RESULT: OK\nREBOOT_RECOMMENDED: no\n";
         var host = new HostResult();
         PkgOpParseResult parsed = PkgOpOutputParser.Parse(output, host);
         Check(parsed.Result == "OK", "результат операции");
         Check(parsed.RebootRecommended == "no", "маркер reboot");
-        Check(parsed.TrivyInstalled == "yes", "маркер установки Trivy");
         Check(parsed.VulnerabilityTotal == 1 && parsed.VulnerabilityBdu == 1 && parsed.VulnerabilityHigh == 1, "сводка уязвимостей");
         Check(host.Vulnerabilities.Count == 1, "строка уязвимости");
         Check(host.Vulnerabilities[0].Title == "Описание|с разделителем", "разделитель в описании");
         Check(host.Vulnerabilities[0].Aliases.Count == 1, "регистронезависимое удаление дублей");
         Check(host.Vulnerabilities[0].PublishedDate == "2026-05-27" && host.Vulnerabilities[0].LastModifiedDate == "2026-06-22", "даты карточки уязвимости");
         Check(parsed.Errors.Contains("первый") && parsed.Errors.Contains("второй"), "накопление всех ошибок");
+
+        var partial = new HostResult();
+        PkgOpResultPolicy.Apply(partial, new PkgOpParseResult { Result = "OK", RebootRecommended = "yes", Changed = 2, Errors = "missing" }, "install", false);
+        Check(partial.Status == HostStatus.Warn && partial.Note.Contains("изменено пакетов: 2") && partial.Note.Contains("перезагруз"), "частичный пакетный успех не маскируется");
+        var noneInstalled = new HostResult();
+        PkgOpResultPolicy.Apply(noneInstalled, new PkgOpParseResult { Result = "FAIL", Changed = 0, Errors = "missing" }, "install", false);
+        Check(noneInstalled.Status == HostStatus.Fail, "полностью невыполненная пакетная операция не считается предупреждением");
+        var noMarker = new HostResult();
+        PkgOpResultPolicy.Apply(noMarker, new PkgOpParseResult(), "install", false);
+        Check(noMarker.Status == HostStatus.Fail && noMarker.UpdateResult == "NO_MARKER", "отсутствие контрактного маркера считается ошибкой");
+        var vulnOk = new HostResult();
+        PkgOpResultPolicy.Apply(vulnOk, new PkgOpParseResult { Result = "OK", VulnerabilityTotal = 3, VulnerabilityHigh = 2 }, "vuln", true);
+        Check(vulnOk.Status == HostStatus.Warn && vulnOk.UpdateResult == "кандидатов: 3", "найденные advisory дают предупреждение, а не сбой");
 
         var missing = new VulnerabilityFinding { Id = "BDU:2026-07378", Severity = "UNKNOWN" };
         Check(BduFindingEnricher.Enrich(missing), "дозаполнение неполной карточки БДУ");
@@ -46,7 +58,7 @@ internal static class ParserTests
 
         var complete = new VulnerabilityFinding { Id = "BDU:2026-06252", Severity = "MEDIUM", Title = "Более свежие данные" };
         BduFindingEnricher.Enrich(complete);
-        Check(complete.Severity == "MEDIUM" && complete.Title == "Более свежие данные", "данные Trivy не перезаписываются");
+        Check(complete.Severity == "MEDIUM" && complete.Title == "Более свежие данные", "существующие данные не перезаписываются");
 
         Check(ShellText.InSingleQuotes("a'b") == "a'\"'\"'b", "экранирование bash без потери апострофа");
         Check(WebRequests.IsTransient(new WebException("timeout", WebExceptionStatus.Timeout)), "повтор запроса после таймаута");
@@ -62,6 +74,10 @@ internal static class ParserTests
         Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.1 МУРОМ", "7.2 Муром" }), "старые выпуски RED OS не смешиваются с 7.3");
         Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "8.0" }), "карточка только для RED OS 8.0 не применяется к 7.3");
         Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new string[0]), "отсутствие RED OS в карточке не считается применимостью");
+        Check(!FstecLinuxCatalog.ShouldIncludeRecord(new LinuxBduRecord { Id = "BDU:2026-1" }) &&
+            FstecLinuxCatalog.ShouldIncludeRecord(new LinuxBduRecord { Id = "BDU:2026-2", Versions = new List<string> { "до 6.1.1" } }) &&
+            FstecLinuxCatalog.ShouldIncludeRecord(new LinuxBduRecord { Id = "BDU:2026-3", RedOsVersions = new List<string> { "8.0" } }),
+            "компактный каталог содержит только карточки Linux и RED OS");
         Check(FstecLinuxCatalog.IsKernelPackage("kernel-lt") && FstecLinuxCatalog.IsKernelPackage("kernel-core") &&
             !FstecLinuxCatalog.IsKernelPackage("kernelshark"), "пакеты ядра распознаются без ложных совпадений");
         Check(FstecLinuxCatalog.IsActiveKernelVersion("6.1.175-1.el7.3", "6.1.175") &&
@@ -75,13 +91,20 @@ internal static class ParserTests
             Systems = new List<SubSystem> { null, new SubSystem { Nodes = new List<Node> { null, new Node { Host = " host ", Port = 70000 } } } },
             Credentials = new List<Credential> { null }
         };
+        brokenConfig.ExcludePackages = new List<string> { " postgresql* ", "POSTGRESQL*", "" };
         ConfigurationRules.Normalize(brokenConfig);
+        Check(brokenConfig.Version == AppConfig.CurrentSchemaVersion, "старая схема конфигурации мигрирует на текущую");
         Check(brokenConfig.Settings.MaxParallel == 100 && brokenConfig.Settings.ConnectTimeoutSec == 15, "границы настроек конфигурации");
         Check(brokenConfig.Systems.Count == 1 && brokenConfig.Systems[0].Nodes.Count == 1 && brokenConfig.Systems[0].Nodes[0].Host == "host" && brokenConfig.Systems[0].Nodes[0].Port == 22, "нормализация узлов конфигурации");
+        Check(brokenConfig.ExcludePackages.Count == 1 && brokenConfig.ExcludePackages[0] == "postgresql*", "строковые списки конфигурации очищаются от пустых значений и дублей");
         Check(brokenConfig.UiTheme == "light", "неизвестная тема заменяется светлой");
         brokenConfig.UiTheme = "DARK";
         ConfigurationRules.Normalize(brokenConfig);
         Check(brokenConfig.UiTheme == "DARK", "тёмная тема принимается без учёта регистра");
+        bool futureConfigRejected = false;
+        try { ConfigurationRules.Normalize(new AppConfig { Version = AppConfig.CurrentSchemaVersion + 1 }); }
+        catch (InvalidOperationException) { futureConfigRejected = true; }
+        Check(futureConfigRejected, "конфигурация будущей схемы не перезаписывается старой программой");
 
         var candidates = CredentialCandidates.Build(new[] {
             new Credential { User = "root", Password = null },
@@ -94,6 +117,10 @@ internal static class ParserTests
         int bodies = 0, cancelledResults = 0;
         ParallelBatch.Run(new[] { 1, 2, 3 }, 2, cancelled.Token, x => bodies++, (x, error) => { if (error is OperationCanceledException) cancelledResults++; });
         Check(bodies == 0 && cancelledResults == 3, "отмена возвращает результат для каждой цели");
+        bool callbackFailureSurfaced = false;
+        try { ParallelBatch.Run(new[] { 1 }, 1, CancellationToken.None, x => { throw new InvalidOperationException("body"); }, (x, error) => { throw new InvalidOperationException("callback"); }); }
+        catch (AggregateException) { callbackFailureSurfaced = true; }
+        Check(callbackFailureSurfaced, "сбой обработчика результата батча не маскируется");
 
         var reportFinding = new VulnerabilityFinding { Id = "BDU:2026-1", PrimaryUrl = "" };
         reportFinding.Aliases.Add("cve-2026-5");
@@ -125,8 +152,18 @@ internal static class ParserTests
         bool tamperRejected = false;
         try { Crypto.DecryptPortable(tampered, "достаточно-длинный-пароль"); } catch { tamperRejected = true; }
         Check(tamperRejected, "изменённый экспорт отклоняется");
+        bool incompleteExportRejected = false;
+        try
+        {
+            Store.ExportPortable(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rpu-test-" + Guid.NewGuid().ToString("N") + ".rpu"), "достаточно-длинный-пароль",
+                new AppConfig { Credentials = new List<Credential> { new Credential { User = "root", Password = null, EncPassword = "foreign-dpapi" } } });
+        }
+        catch (InvalidOperationException) { incompleteExportRejected = true; }
+        Check(incompleteExportRejected, "экспорт не создаёт резервную копию без недоступного DPAPI-пароля");
         Check(UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "bb", "aa"), "обновлённая сборка той же версии обнаруживается по SHA-256");
         Check(!UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "AA", "aa"), "та же сборка повторно не скачивается");
+        Check(AppUpdater.IsSha256(new string('a', 64)) && !AppUpdater.IsSha256(new string('z', 64)), "манифест принимает только шестнадцатеричный SHA-256");
+        Check(AppUpdater.BatchLiteral(@"C:\100%\app.exe") == @"C:\100%%\app.exe", "путь обновления безопасен для batch-переменных");
         foreach (int width in new[] { 720, 766, 929, 959, 960, 1100 })
         {
             CommandBarLayout command = UiLayoutRules.CommandBar(width, 236);

@@ -72,7 +72,10 @@ namespace RedOSPackageUpdater
         private static void NotifyError<T>(Action<T, Exception> onError, T item, Exception error)
         {
             if (onError == null) return;
-            try { onError(item, error); } catch { }
+            // Ошибка обработчика означает нарушение контракта батча (например,
+            // результат узла не удалось добавить в итоговую коллекцию). Не маскируем
+            // её: иначе UI покажет завершение операции с пропавшей целью.
+            onError(item, error);
         }
     }
 

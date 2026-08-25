@@ -70,6 +70,7 @@ namespace RedOSPackageUpdater
 
     public class AppConfig
     {
+        public const int CurrentSchemaVersion = 2;
         public int Version { get; set; }
         public AppSettings Settings { get; set; }
         public List<Credential> Credentials { get; set; }
@@ -95,7 +96,7 @@ namespace RedOSPackageUpdater
 
         public AppConfig()
         {
-            Version = 1;
+            Version = CurrentSchemaVersion;
             Settings = new AppSettings();
             Credentials = new List<Credential>();
             Systems = new List<SubSystem>();
@@ -178,7 +179,7 @@ namespace RedOSPackageUpdater
         }
     }
 
-    // Структурированная строка отчёта Trivy. Храним её отдельно от текстового лога,
+    // Структурированная запись security advisory/БДУ. Храним её отдельно от текстового лога,
     // чтобы формировать общий отчёт по всем узлам без повторного разбора файлов.
     public class VulnerabilityFinding
     {

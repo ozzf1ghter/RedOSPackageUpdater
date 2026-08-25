@@ -7,8 +7,8 @@ if not exist tests mkdir tests
 "%CSC%" /nologo /target:exe /out:tests\ParserTests.exe ^
   /reference:System.dll /reference:System.Core.dll /reference:System.Web.Extensions.dll ^
   /reference:System.Xml.Linq.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll ^
-  tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs src\BduFindingEnricher.cs ^
-  src\Infrastructure.cs src\ConfigurationRules.cs src\UiLayoutRules.cs src\FstecLinuxCatalog.cs src\VulnerabilityDb.cs src\VulnerabilityReportService.cs src\BuildInfo.cs src\Store.cs src\Crypto.cs
+  tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs src\PkgOpResultPolicy.cs src\BduFindingEnricher.cs ^
+  src\Infrastructure.cs src\ConfigurationRules.cs src\UiLayoutRules.cs src\FstecLinuxCatalog.cs src\VulnerabilityDb.cs src\VulnerabilityReportService.cs src\BuildInfo.cs src\Store.cs src\Crypto.cs src\AppUpdater.cs
 if errorlevel 1 exit /b 1
 tests\ParserTests.exe
 set RESULT=%ERRORLEVEL%

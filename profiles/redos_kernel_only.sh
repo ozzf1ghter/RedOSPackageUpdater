@@ -9,6 +9,11 @@ osname="$( (. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") 2>/dev/null)"
 osver="$( (. /etc/os-release 2>/dev/null; echo "$VERSION_ID") 2>/dev/null)"
 case "$osver" in 7.3|8.0) ;; *) echo "ОШИБКА: RED OS ${osver:-unknown} пока не поддерживается этим профилем"; exit 1;; esac
 command -v dnf >/dev/null 2>&1 || { echo "ОШИБКА: DNF не найден"; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "ОШИБКА: профиль должен выполняться от root"; exit 1; }
+command -v rpm >/dev/null 2>&1 || { echo "ОШИБКА: RPM не найден"; exit 1; }
+command -v grubby >/dev/null 2>&1 || { echo "ОШИБКА: grubby не найден — безопасно выбрать загружаемое ядро нельзя"; exit 1; }
+[ -f /etc/sysconfig/kernel ] || { echo "ОШИБКА: /etc/sysconfig/kernel отсутствует"; exit 1; }
+[ -f /etc/dnf/dnf.conf ] || { echo "ОШИБКА: /etc/dnf/dnf.conf отсутствует"; exit 1; }
 echo "OS_INFO|$osname|$(uname -r)|$(dnf --version 2>/dev/null | head -1 | tr -d '\n')"
 uname -r
 grubby --default-kernel
@@ -92,25 +97,7 @@ while read -r k; do
 done < <(extract_kernels)
 
 if [ "$missing" -ne 0 ]; then
-  echo "=== Чистим устаревшие BLS/GRUB записи ==="
-  [ -f /boot/grub2/grub.cfg ] && cp -a /boot/grub2/grub.cfg /boot/grub2/grub.cfg.bak.$(date +%F_%H%M%S)
-  [ -f /boot/efi/EFI/redos/grub.cfg ] && cp -a /boot/efi/EFI/redos/grub.cfg /boot/efi/EFI/redos/grub.cfg.bak.$(date +%F_%H%M%S)
-  backup_dir="/root/old-bls-entries.$(date +%F_%H%M%S)"
-  mkdir -p "$backup_dir"
-  for f in /boot/loader/entries/*.conf; do
-    [ -f "$f" ] || continue
-    kernel_path="$(awk '/^linux /{print $2}' "$f" | head -1)"
-    [ -z "$kernel_path" ] && continue
-    case "$kernel_path" in
-      /vmlinuz-*) real_path="/boot$kernel_path" ;;
-      /boot/vmlinuz-*) real_path="$kernel_path" ;;
-      *) continue ;;
-    esac
-    [ ! -e "$real_path" ] && mv "$f" "$backup_dir"/
-  done
-  [ -f /boot/grub2/grub.cfg ] && grub2-mkconfig -o /boot/grub2/grub.cfg
-  [ -f /boot/efi/EFI/redos/grub.cfg ] && grub2-mkconfig -o /boot/efi/EFI/redos/grub.cfg
-  grubby --set-default "$latest_kernel"
+  echo "ВНИМАНИЕ: найдены записи загрузчика без файлов ядра. Автоматическая правка BLS/GRUB отключена; требуется ручная проверка."
 fi
 
 echo "=== Финальная проверка ==="
@@ -133,7 +120,11 @@ expected="$latest_ver"
 [ -z "$expected" ] && expected="$(grubby --default-kernel 2>/dev/null | sed 's#^/boot/vmlinuz-##')"
 [ -z "$expected" ] && expected="$(uname -r)"
 def_now="$(grubby --default-kernel 2>/dev/null | sed 's#^/boot/vmlinuz-##')"
-[ -n "$def_now" ] && [ "$def_now" != "$expected" ] && echo "ВНИМАНИЕ: default-ядро ($def_now) != ожидаемого ($expected) - grubby мог не переключить default"
+default_ok=1
+if [ -z "$def_now" ] || [ "$def_now" != "$expected" ]; then
+  default_ok=0
+  echo "ОШИБКА: default-ядро (${def_now:-не определено}) != ожидаемого ($expected) - reboot запрещён"
+fi
 
 # Только ядро: reboot нужен, если default-ядро отличается от загруженного (поставили новее).
 reboot_required=no
@@ -144,11 +135,11 @@ elif dnf needs-restarting --help >/dev/null 2>&1; then
 fi
 [ "$expected" != "$(uname -r)" ] && reboot_required=yes
 
-if [ "$missing" -eq 0 ]; then
+if [ "$missing" -eq 0 ] && [ "$default_ok" -eq 1 ]; then
   echo "Записей GRUB на отсутствующие ядра не найдено. Можно выполнять reboot."
   echo "RESULT: READY_FOR_REBOOT"
 else
-  echo "Есть отсутствующие ядра. Reboot пока не делать."
+  echo "Проверка загрузчика не пройдена. Reboot пока не делать."
   echo "RESULT: DO_NOT_REBOOT"
 fi
 echo "REBOOT_REQUIRED: ${reboot_required}"
