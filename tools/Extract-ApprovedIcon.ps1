@@ -79,11 +79,31 @@ function Convert-PngToIconDib($item) {
     } finally {$dibWriter.Dispose();$memory.Dispose();$bitmap.Dispose()}
 }
 
-$ico=Join-Path $Project 'icon.ico'; $images=@($pngs|ForEach-Object{Convert-PngToIconDib $_})
+$ico=Join-Path $Project 'icon.ico'
+# .NET Framework csc использует старый Win32 resource compiler и отвергает 256px DIB.
+# Большой вариант остаётся отдельным PNG-ресурсом для About/UI; системному значку достаточно 16-64px.
+$icoFrames=@($pngs|Where-Object{$_.Size-lt 256})
+# Унарная запятая запрещает PowerShell разворачивать byte[] каждого кадра в поток отдельных
+# byte. Без неё таблица ICO получала размер кадра 1 байт, и csc молча ставил стандартный значок.
+$images=@($icoFrames|ForEach-Object{ ,(Convert-PngToIconDib $_) })
 $stream=[IO.File]::Open($ico,[IO.FileMode]::Create);$writer=New-Object IO.BinaryWriter $stream
 try {
-    $writer.Write([uint16]0);$writer.Write([uint16]1);$writer.Write([uint16]$pngs.Count);$offset=6+16*$pngs.Count
-    for($i=0;$i -lt $pngs.Count;$i++){$v=$pngs[$i].Size;$writer.Write([byte]$(if($v-eq 256){0}else{$v}));$writer.Write([byte]$(if($v-eq 256){0}else{$v}));$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$images[$i].Length);$writer.Write([uint32]$offset);$offset+=$images[$i].Length}
+    $writer.Write([uint16]0);$writer.Write([uint16]1);$writer.Write([uint16]$icoFrames.Count);$offset=6+16*$icoFrames.Count
+    for($i=0;$i -lt $icoFrames.Count;$i++){$v=$icoFrames[$i].Size;$writer.Write([byte]$v);$writer.Write([byte]$v);$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$images[$i].Length);$writer.Write([uint32]$offset);$offset+=$images[$i].Length}
     foreach($bytes in $images){$writer.Write($bytes)}
 } finally {$writer.Dispose();$stream.Dispose()}
+
+# Win32 resource compiler из .NET Framework 4.x не принимает современный многокадровый
+# 32-bit ICO стабильно. Системный ресурс создаём через HICON самой Windows; остальные
+# оптические размеры приложение продолжает брать из встроенных PNG.
+if(-not ('NativeIconMethods' -as [type])) {
+    Add-Type 'using System; using System.Runtime.InteropServices; public static class NativeIconMethods { [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon); }'
+}
+$systemBitmap=[Drawing.Bitmap]::FromFile((Join-Path $assetDir 'app-icon-32.png'))
+$iconHandle=$systemBitmap.GetHicon()
+try {
+    $systemIcon=[Drawing.Icon]::FromHandle($iconHandle)
+    $systemStream=[IO.File]::Open($ico,[IO.FileMode]::Create)
+    try {$systemIcon.Save($systemStream)} finally {$systemStream.Dispose();$systemIcon.Dispose()}
+} finally {[NativeIconMethods]::DestroyIcon($iconHandle)|Out-Null;$systemBitmap.Dispose()}
 Write-Host "Extracted approved optical icon sizes: $($pngs.Size -join ', ') px"
