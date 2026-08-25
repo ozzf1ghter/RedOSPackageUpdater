@@ -107,8 +107,11 @@ $opticalVerticalCenter = $controls -match 'textRect = new Rectangle\(groupLeft \
 Assert-Ui $opticalVerticalCenter 'buttons and fields share the optical text baseline'
 $placeholderPreservesBorder = $controls -notmatch 'readonly Label _placeholderLabel' -and
     $controls -match 'SendMessage\(_editor\.Handle, EmSetCueBanner' -and
-    $controls -match 'new Rectangle\(1, 1, Math\.Max\(1, Width - 3\)'
+    $controls -match 'innerBounds = new Rectangle\(1, 1, Math\.Max\(1, Width - 3\)'
 Assert-Ui $placeholderPreservesBorder 'native cue banner cannot erase or be hidden behind the field editor'
+$symmetricTextFieldBorder = $controls -match 'FillPath\(border, outer\)' -and
+    $controls -match 'FillPath\(fill, inner\)' -and $controls -notmatch 'DrawPath\(pen, path\);\s*\}\s*private void ApplyPlaceholder'
+Assert-Ui $symmetricTextFieldBorder 'text field border is a symmetric filled ring rather than clipped pen strokes'
 $nativeTextChromeRemoved = $controls -match 'class BorderlessTextEditor' -and
     $controls -match 'cp\.Style &= ~WsBorder' -and $controls -match 'cp\.ExStyle &= ~WsExClientEdge' -and
     $theme -match 'c\.HasChildren && !\(c is ModernTextBox\)'

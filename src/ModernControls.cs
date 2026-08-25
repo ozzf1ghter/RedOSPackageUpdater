@@ -347,17 +347,16 @@ namespace RedOSPackageUpdater
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (var outside = new SolidBrush(Parent == null ? Theme.Bg : Parent.BackColor))
                 e.Graphics.FillRectangle(outside, ClientRectangle);
-            var bounds = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
-            using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
-            using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, path);
+            var outerBounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            var innerBounds = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
+            using (GraphicsPath outer = ModernButton.Rounded(outerBounds, 6))
+            using (var border = new SolidBrush(_editor.Focused ? Theme.Accent : Theme.Border))
+                e.Graphics.FillPath(border, outer);
+            using (GraphicsPath inner = ModernButton.Rounded(innerBounds, 5))
+            using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, inner);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            var bounds = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
-            using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
-            using (var pen = new Pen(_editor.Focused ? Theme.Accent : Theme.Border))
-                e.Graphics.DrawPath(pen, path);
         }
         private void ApplyPlaceholder()
         {
