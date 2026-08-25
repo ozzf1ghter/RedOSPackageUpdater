@@ -99,14 +99,14 @@ namespace RedOSPackageUpdater
                 int groupWidth = 16 + 7 + Math.Min(measured.Width, Math.Max(0, Width - 30));
                 int groupLeft = Math.Max(8, (Width - groupWidth) / 2);
                 AppIcons.Draw(e.Graphics, IconName, fore, new Rectangle(groupLeft, Height / 2 - 8, 16, 16));
-                textRect = new Rectangle(groupLeft + 23, 1, Math.Max(1, Width - groupLeft - 27), Math.Max(1, Height - 1));
+                textRect = new Rectangle(groupLeft + 23, -1, Math.Max(1, Width - groupLeft - 27), Height + 1);
                 flags &= ~TextFormatFlags.HorizontalCenter;
                 flags |= TextFormatFlags.Left;
             }
             else
             {
                 if (hasIcon) AppIcons.Draw(e.Graphics, IconName, fore, new Rectangle(10, Height / 2 - 8, 16, 16));
-                textRect = new Rectangle(Padding.Left + 3 + iconOffset, 1, Math.Max(1, Width - Padding.Horizontal - 6 - iconOffset), Math.Max(1, Height - 1));
+                textRect = new Rectangle(Padding.Left + 3 + iconOffset, -1, Math.Max(1, Width - Padding.Horizontal - 6 - iconOffset), Height + 1);
             }
             TextRenderer.DrawText(e.Graphics, Text, Font, textRect, fore, flags);
             if (Focused && ShowFocusCues)
@@ -351,10 +351,12 @@ namespace RedOSPackageUpdater
             else
             {
                 int editorHeight = _editor.PreferredHeight;
-                _editor.SetBounds(horizontalPadding, Math.Max(1, (Height - editorHeight) / 2 + 1),
+                _editor.SetBounds(horizontalPadding, Math.Max(1, (Height - editorHeight) / 2 - 1),
                     Math.Max(1, Width - horizontalPadding * 2), editorHeight);
             }
-            _placeholderLabel.SetBounds(horizontalPadding, 2, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 2));
+            // Не перекрываем дочерним Label рамку родительского контрола. Раньше Label
+            // доходил до нижней границы и стирал почти всю нижнюю линию поля поиска.
+            _placeholderLabel.SetBounds(horizontalPadding, 1, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 4));
             ApplyPlaceholder();
         }
     }
@@ -389,7 +391,7 @@ namespace RedOSPackageUpdater
                     e.Graphics.DrawLines(pen, new[] { new Point(5, box.Top + 8), new Point(8, box.Top + 11), new Point(14, box.Top + 5) });
                 }
             }
-            var textRect = new Rectangle(25, 1, Math.Max(0, Width - 25), Math.Max(1, Height - 1));
+            var textRect = new Rectangle(25, -1, Math.Max(0, Width - 25), Height + 1);
             TextRenderer.DrawText(e.Graphics, Text, Font, textRect, Enabled ? Theme.Text : Theme.Disabled,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics, textRect, Theme.Text, BackColor);
@@ -451,7 +453,7 @@ namespace RedOSPackageUpdater
             bool selected = (e.State & DrawItemState.Selected) != 0;
             Color back = selected ? Theme.Sel : Theme.Surface;
             using (var brush = new SolidBrush(back)) e.Graphics.FillRectangle(brush, e.Bounds);
-            var textRect = new Rectangle(e.Bounds.Left + 9, e.Bounds.Top + 1, Math.Max(1, e.Bounds.Width - 14), Math.Max(1, e.Bounds.Height - 1));
+            var textRect = new Rectangle(e.Bounds.Left + 9, e.Bounds.Top - 1, Math.Max(1, e.Bounds.Width - 14), e.Bounds.Height + 1);
             TextRenderer.DrawText(e.Graphics, Convert.ToString(Items[e.Index]), Font, textRect, Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if ((e.State & DrawItemState.Focus) != 0 && !selected) e.DrawFocusRectangle();
