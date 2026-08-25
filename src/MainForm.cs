@@ -312,7 +312,9 @@ namespace RedOSPackageUpdater
             try
             {
                 using (var si = Assembly.GetExecutingAssembly().GetManifestResourceStream("app.ico"))
-                    if (si != null) Icon = new System.Drawing.Icon(si);
+                    if (si != null)
+                    using (var loadedIcon = new System.Drawing.Icon(si))
+                        Icon = (System.Drawing.Icon)loadedIcon.Clone();
             }
             catch { }
 

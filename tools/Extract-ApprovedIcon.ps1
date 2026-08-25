@@ -52,8 +52,34 @@ try {
     }
 } finally {$source.Dispose()}
 
-# ICO с PNG-кадрами; Windows выбирает готовый оптический размер самостоятельно.
-$ico=Join-Path $Project 'icon.ico'; $images=@($pngs|ForEach-Object{[IO.File]::ReadAllBytes($_.Path)})
+# ICO с классическими DIB-кадрами. PNG внутри ICO не поддерживается старыми оболочками
+# Windows Server/классической панелью задач: они показывают стандартную иконку WinForms.
+function Convert-PngToIconDib($item) {
+    $bitmap=[Drawing.Bitmap]::FromFile($item.Path)
+    $memory=New-Object IO.MemoryStream
+    $dibWriter=New-Object IO.BinaryWriter $memory
+    try {
+        $width=[int]$item.Size; $height=[int]$item.Size
+        $xorSize=$width*$height*4
+        $maskStride=[int]([Math]::Ceiling($width/32.0)*4)
+        $dibWriter.Write([uint32]40); $dibWriter.Write([int32]$width); $dibWriter.Write([int32]($height*2))
+        $dibWriter.Write([uint16]1); $dibWriter.Write([uint16]32); $dibWriter.Write([uint32]0)
+        $dibWriter.Write([uint32]$xorSize); $dibWriter.Write([int32]0); $dibWriter.Write([int32]0)
+        $dibWriter.Write([uint32]0); $dibWriter.Write([uint32]0)
+        for($y=$height-1;$y-ge 0;$y--){for($x=0;$x-lt $width;$x++){
+            $c=$bitmap.GetPixel($x,$y); $dibWriter.Write([byte]$c.B); $dibWriter.Write([byte]$c.G)
+            $dibWriter.Write([byte]$c.R); $dibWriter.Write([byte]$c.A)
+        }}
+        for($y=$height-1;$y-ge 0;$y--){
+            $row=New-Object byte[] $maskStride
+            for($x=0;$x-lt $width;$x++){if($bitmap.GetPixel($x,$y).A-lt 128){$row[[int]($x/8)] = $row[[int]($x/8)] -bor (0x80-shr($x%8))}}
+            $dibWriter.Write($row)
+        }
+        $dibWriter.Flush(); return $memory.ToArray()
+    } finally {$dibWriter.Dispose();$memory.Dispose();$bitmap.Dispose()}
+}
+
+$ico=Join-Path $Project 'icon.ico'; $images=@($pngs|ForEach-Object{Convert-PngToIconDib $_})
 $stream=[IO.File]::Open($ico,[IO.FileMode]::Create);$writer=New-Object IO.BinaryWriter $stream
 try {
     $writer.Write([uint16]0);$writer.Write([uint16]1);$writer.Write([uint16]$pngs.Count);$offset=6+16*$pngs.Count
