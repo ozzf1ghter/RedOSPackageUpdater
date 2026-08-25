@@ -93,17 +93,22 @@ try {
     foreach($bytes in $images){$writer.Write($bytes)}
 } finally {$writer.Dispose();$stream.Dispose()}
 
-# Win32 resource compiler из .NET Framework 4.x не принимает современный многокадровый
-# 32-bit ICO стабильно. Системный ресурс создаём через HICON самой Windows; остальные
-# оптические размеры приложение продолжает брать из встроенных PNG.
-if(-not ('NativeIconMethods' -as [type])) {
-    Add-Type 'using System; using System.Runtime.InteropServices; public static class NativeIconMethods { [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon); }'
-}
+# Win32 resource compiler из .NET Framework 4.x получает классический 24-bit DIB + AND-mask.
+# GetHicon/Icon.Save здесь использовать нельзя: на классической теме он теряет alpha,
+# превращает синий в бирюзовый и показывает RGB прозрачных углов как белые стрелки.
 $systemBitmap=[Drawing.Bitmap]::FromFile((Join-Path $assetDir 'app-icon-32.png'))
-$iconHandle=$systemBitmap.GetHicon()
+$systemStream=[IO.File]::Open($ico,[IO.FileMode]::Create)
+$systemWriter=New-Object IO.BinaryWriter $systemStream
 try {
-    $systemIcon=[Drawing.Icon]::FromHandle($iconHandle)
-    $systemStream=[IO.File]::Open($ico,[IO.FileMode]::Create)
-    try {$systemIcon.Save($systemStream)} finally {$systemStream.Dispose();$systemIcon.Dispose()}
-} finally {[NativeIconMethods]::DestroyIcon($iconHandle)|Out-Null;$systemBitmap.Dispose()}
+    $w=32;$h=32;$xorStride=96;$maskStride=4;$payloadSize=40+$xorStride*$h+$maskStride*$h
+    $systemWriter.Write([uint16]0);$systemWriter.Write([uint16]1);$systemWriter.Write([uint16]1)
+    $systemWriter.Write([byte]$w);$systemWriter.Write([byte]$h);$systemWriter.Write([byte]0);$systemWriter.Write([byte]0)
+    $systemWriter.Write([uint16]1);$systemWriter.Write([uint16]24);$systemWriter.Write([uint32]$payloadSize);$systemWriter.Write([uint32]22)
+    $systemWriter.Write([uint32]40);$systemWriter.Write([int32]$w);$systemWriter.Write([int32]($h*2))
+    $systemWriter.Write([uint16]1);$systemWriter.Write([uint16]24);$systemWriter.Write([uint32]0)
+    $systemWriter.Write([uint32]($xorStride*$h));$systemWriter.Write([int32]0);$systemWriter.Write([int32]0)
+    $systemWriter.Write([uint32]0);$systemWriter.Write([uint32]0)
+    for($y=$h-1;$y-ge 0;$y--){for($x=0;$x-lt $w;$x++){$c=$systemBitmap.GetPixel($x,$y);$systemWriter.Write([byte]$c.B);$systemWriter.Write([byte]$c.G);$systemWriter.Write([byte]$c.R)}}
+    for($y=$h-1;$y-ge 0;$y--){$mask=New-Object byte[] $maskStride;for($x=0;$x-lt $w;$x++){if($systemBitmap.GetPixel($x,$y).A-lt 128){$mask[[int]($x/8)]=$mask[[int]($x/8)]-bor(0x80-shr($x%8))}};$systemWriter.Write($mask)}
+} finally {$systemWriter.Dispose();$systemStream.Dispose();$systemBitmap.Dispose()}
 Write-Host "Extracted approved optical icon sizes: $($pngs.Size -join ', ') px"

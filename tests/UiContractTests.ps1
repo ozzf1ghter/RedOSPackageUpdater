@@ -87,6 +87,10 @@ Assert-Ui $unifiedIcons 'navigation and brand use one unified icon system'
 $modernChrome = $main -match 'EnableModernWindowChrome' -and $chrome -match 'class ModernTitleBar' -and
     $chrome -match 'HtBottomRight' -and $chrome -match 'TrackPopupMenu'
 Assert-Ui $modernChrome 'custom title bar preserves resize and system menu contracts'
+$singleSelectionToggle = $main -match '_btnToggleAll' -and $main -notmatch 'var markNone'
+Assert-Ui $singleSelectionToggle 'server selection uses one contextual toggle button'
+$noTopStripe = $chrome -notmatch 'FillRectangle\(accent,\s*0,\s*0,\s*Width,\s*2\)'
+Assert-Ui $noTopStripe 'title bar has no decorative top stripe'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')

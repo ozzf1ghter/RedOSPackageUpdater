@@ -369,6 +369,12 @@ namespace RedOSPackageUpdater
             foreach (TreeNode system in _tree.Nodes)
                 foreach (TreeNode node in system.Nodes) { total++; if (node.Checked) selected++; }
             if (_selectionLabel != null) _selectionLabel.Text = "Выбрано серверов: " + selected + " из " + total;
+            if (_btnToggleAll != null)
+            {
+                bool allSelected = total > 0 && selected == total;
+                _btnToggleAll.Text = allSelected ? "Снять все" : "Отметить все";
+                _tips.SetToolTip(_btnToggleAll, allSelected ? "Снять все отметки" : "Отметить все серверы");
+            }
             if (_shellStatus != null) _shellStatus.Text = _running ? "Выполняется операция" : "Готово · выбрано " + selected + " серверов";
             if (_btnRun != null && !_running) _btnRun.Text = selected > 0 ? "Запустить на " + selected + " узлах" : "Запустить отмеченные";
             if (!_running)

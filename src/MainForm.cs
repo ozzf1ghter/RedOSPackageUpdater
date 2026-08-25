@@ -27,7 +27,7 @@ namespace RedOSPackageUpdater
         private Label _pkgLabel;
         private TextBox _pkgBox;
         private Button _btnRun, _btnStop, _btnPreview, _btnVulnerabilityScan;
-        private Button _btnEditSelection, _btnSystemServices;
+        private Button _btnEditSelection, _btnSystemServices, _btnToggleAll;
         private const int PkgInstallIndex = 3;   // индексы режимов "пакеты" в _profile
         private const int PkgUpdateIndex = 4;
         private const int PkgRemoveIndex = 5;
@@ -205,16 +205,18 @@ namespace RedOSPackageUpdater
             var treeActions = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Theme.SidebarBg };
             var treeTitle = Theme.SectionLabel("Серверы");
             treeTitle.Left = 2; treeTitle.Top = 5; treeTitle.Width = 150; treeTitle.Height = 20;
-            var markNone = Theme.ToolbarButton("Снять", 56);
-            var markAll = Theme.ToolbarButton("Отметить все", 94);
-            markNone.Dock = DockStyle.Right; markAll.Dock = DockStyle.Right;
-            markAll.Click += (s, e) => CheckAll(true);
-            markNone.Click += (s, e) => CheckAll(false);
-            _tips.SetToolTip(markAll, "Отметить все серверы");
-            _tips.SetToolTip(markNone, "Снять все отметки");
+            _btnToggleAll = Theme.ToolbarButton("Отметить все", 104);
+            _btnToggleAll.Dock = DockStyle.Right;
+            _btnToggleAll.Click += (s, e) =>
+            {
+                int total = 0, selected = 0;
+                foreach (TreeNode system in _tree.Nodes)
+                    foreach (TreeNode node in system.Nodes) { total++; if (node.Checked) selected++; }
+                CheckAll(total == 0 || selected < total);
+            };
+            _tips.SetToolTip(_btnToggleAll, "Отметить все серверы");
             treeActions.Controls.Add(treeTitle);
-            treeActions.Controls.Add(markAll);
-            treeActions.Controls.Add(markNone);
+            treeActions.Controls.Add(_btnToggleAll);
             _treeSearch = new ModernTextBox { Dock = DockStyle.Bottom, Height = 28, Placeholder = "Поиск серверов…" };
             _treeSearch.TextChanged += delegate { RebuildTree(); };
             _tips.SetToolTip(_treeSearch, "Поиск по системе, имени, адресу и роли · Ctrl+F · Esc для очистки");
