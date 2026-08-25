@@ -77,6 +77,7 @@ namespace RedOSPackageUpdater
         public List<string> ExcludePackages { get; set; }   // маски пакетов, исключаемых из обновления
         public string RepoHost { get; set; }                 // хост зеркала репозиториев
         public List<string> RepoScripts { get; set; }        // полные пути reposync-скриптов (запускаются по очереди)
+        public string UiTheme { get; set; }                  // light | dark
 
         // Дефолты вынесены сюда, а не продублированы в конструкторе и в Store.Normalize -
         // раньше это были два независимых места, и правка списка исключений в одном легко
@@ -101,6 +102,7 @@ namespace RedOSPackageUpdater
             ExcludePackages = DefaultExcludePackages();
             RepoHost = DefaultRepoHost;
             RepoScripts = DefaultRepoScripts();
+            UiTheme = "light";
         }
     }
 

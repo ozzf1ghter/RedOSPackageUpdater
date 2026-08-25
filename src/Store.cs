@@ -229,6 +229,7 @@ namespace RedOSPackageUpdater
             public List<string> ExcludePackages { get; set; }
             public string RepoHost { get; set; }
             public List<string> RepoScripts { get; set; }
+            public string UiTheme { get; set; }
             public List<SubSystem> Systems { get; set; }
             public List<CredExport> Credentials { get; set; }
         }
@@ -247,6 +248,7 @@ namespace RedOSPackageUpdater
                 ExcludePackages = cfg.ExcludePackages,
                 RepoHost = cfg.RepoHost,
                 RepoScripts = cfg.RepoScripts,
+                UiTheme = cfg.UiTheme,
                 Systems = cfg.Systems,
                 Credentials = new List<CredExport>()
             };
@@ -271,6 +273,7 @@ namespace RedOSPackageUpdater
                 ExcludePackages = b.ExcludePackages,
                 RepoHost = b.RepoHost,
                 RepoScripts = b.RepoScripts,
+                UiTheme = b.UiTheme,
                 Credentials = new List<Credential>()
             };
             if (b.Credentials != null)

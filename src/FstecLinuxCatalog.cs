@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -20,8 +21,9 @@ namespace RedOSPackageUpdater
         public string Published { get; set; }
         public string Modified { get; set; }
         public List<string> Versions { get; set; }
+        public List<string> RedOsVersions { get; set; }
         public List<string> Cves { get; set; }
-        public LinuxBduRecord() { Versions = new List<string>(); Cves = new List<string>(); }
+        public LinuxBduRecord() { Versions = new List<string>(); RedOsVersions = new List<string>(); Cves = new List<string>(); }
     }
 
     // Консервативная проверка карточек БДУ, где уязвимое ПО указано как общий продукт Linux.
@@ -76,28 +78,41 @@ namespace RedOSPackageUpdater
             FileSwap.Replace(CatalogPath + ".tmp", CatalogPath);
         }
 
+        internal static void BuildForDistribution(string zipPath, string output, CancellationToken ct)
+        {
+            Build(zipPath, output, ct);
+        }
+
         public static int Enrich(List<HostResult> results)
         {
+            EnsureBundledCatalog();
             if (!Exists || results == null) return 0;
             List<LinuxBduRecord> catalog;
             try
             {
                 var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
                 catalog = ser.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(CatalogPath, Encoding.UTF8));
+                if (!HasApplicabilitySchema(catalog) && InstallBundledCatalog())
+                    catalog = ser.Deserialize<List<LinuxBduRecord>>(File.ReadAllText(CatalogPath, Encoding.UTF8));
             }
             catch { return 0; }
+            var byId = catalog.Where(r => r != null && !string.IsNullOrWhiteSpace(r.Id))
+                .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
             int added = 0;
             foreach (HostResult host in results)
             {
                 if (host == null) continue;
                 if (host.Vulnerabilities == null) host.Vulnerabilities = new List<VulnerabilityFinding>();
+                ClassifyPackageFindings(host, byId);
                 string kernel = KernelVersion(host.OsInfo);
                 if (kernel.Length == 0) continue;
                 var known = new HashSet<string>(host.Vulnerabilities.Where(v => v != null && !string.IsNullOrWhiteSpace(v.Id)).Select(v => v.Id), StringComparer.OrdinalIgnoreCase);
                 foreach (LinuxBduRecord record in catalog)
                 {
                     string range;
-                    if (record == null || string.IsNullOrWhiteSpace(record.Id) || known.Contains(record.Id) || !Applies(kernel, record.Versions, out range)) continue;
+                    if (record == null || string.IsNullOrWhiteSpace(record.Id) || known.Contains(record.Id) ||
+                        record.Versions == null || !Applies(kernel, record.Versions, out range)) continue;
                     var finding = new VulnerabilityFinding
                     {
                         Id = record.Id, Package = "Linux (работающее ядро)", InstalledVersion = kernel,
@@ -111,6 +126,88 @@ namespace RedOSPackageUpdater
                 }
             }
             return added;
+        }
+
+        private static bool HasApplicabilitySchema(List<LinuxBduRecord> records)
+        {
+            LinuxBduRecord sentinel = (records ?? new List<LinuxBduRecord>()).FirstOrDefault(r =>
+                r != null && string.Equals(r.Id, "BDU:2026-05932", StringComparison.OrdinalIgnoreCase));
+            return sentinel != null && (sentinel.RedOsVersions ?? new List<string>()).Any(v => SameOsVersion("7.3", v));
+        }
+
+        private static void EnsureBundledCatalog()
+        {
+            if (!Exists) InstallBundledCatalog();
+        }
+
+        private static bool InstallBundledCatalog()
+        {
+            try
+            {
+                using (Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream("linux-bdu.zip"))
+                {
+                    if (resource == null) return false;
+                    Directory.CreateDirectory(VulnerabilityDb.Dir);
+                    string zip = CatalogPath + ".bundled.zip";
+                    using (var output = new FileStream(zip, FileMode.Create, FileAccess.Write, FileShare.None)) resource.CopyTo(output);
+                    try { ExtractCompactCatalog(zip, CatalogPath + ".tmp"); FileSwap.Replace(CatalogPath + ".tmp", CatalogPath); }
+                    finally { TryDelete(zip); TryDelete(CatalogPath + ".tmp"); }
+                    return true;
+                }
+            }
+            catch { return false; }
+        }
+
+        private static void ClassifyPackageFindings(HostResult host, IDictionary<string, LinuxBduRecord> byId)
+        {
+            string hostVersion = RedOsVersion(host.OsInfo);
+            string activeKernel = KernelVersion(host.OsInfo);
+            foreach (VulnerabilityFinding finding in host.Vulnerabilities)
+            {
+                if (finding == null || !(finding.Id ?? "").StartsWith("BDU:", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(finding.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase)) continue;
+                // RPM keeps several kernel versions intentionally. Trivy rootfs sees
+                // every installed kernel RPM, but only uname -r identifies the code
+                // that is actually running. Old fallback kernels must remain in the
+                // full diagnostic report, not in confirmed active vulnerabilities.
+                if (IsKernelPackage(finding.Package) && !IsActiveKernelVersion(finding.InstalledVersion, activeKernel))
+                {
+                    finding.DetectionKind = "INACTIVE_KERNEL";
+                    finding.AffectedRange = string.IsNullOrEmpty(activeKernel)
+                        ? "Не удалось определить работающее ядро"
+                        : "Установлено как резервное; работающее ядро " + activeKernel;
+                    continue;
+                }
+                LinuxBduRecord record;
+                if (!byId.TryGetValue(finding.Id, out record))
+                {
+                    finding.DetectionKind = "REDOS_UNVERIFIED";
+                    finding.AffectedRange = "Нет данных о платформах в локальном каталоге ФСТЭК";
+                    continue;
+                }
+                List<string> versions = record.RedOsVersions ?? new List<string>();
+                string matched = versions.FirstOrDefault(v => SameOsVersion(hostVersion, v));
+                if (versions.Count == 0)
+                {
+                    finding.DetectionKind = "REDOS_NOT_APPLICABLE";
+                    finding.AffectedRange = "RED OS не указана в карточке БДУ";
+                }
+                else if (string.IsNullOrEmpty(hostVersion))
+                {
+                    finding.DetectionKind = "REDOS_UNVERIFIED";
+                    finding.AffectedRange = "Не удалось определить версию RED OS узла; в карточке указана RED OS " + string.Join(", ", versions.ToArray());
+                }
+                else if (matched != null)
+                {
+                    finding.DetectionKind = "REDOS_CONFIRMED";
+                    finding.AffectedRange = "RED OS " + matched;
+                }
+                else
+                {
+                    finding.DetectionKind = "REDOS_NOT_APPLICABLE";
+                    finding.AffectedRange = "В карточке БДУ указана только RED OS " + string.Join(", ", versions.ToArray());
+                }
+            }
         }
 
         private static void Build(string zipPath, string output, CancellationToken ct)
@@ -129,8 +226,8 @@ namespace RedOSPackageUpdater
                         if (reader.NodeType != System.Xml.XmlNodeType.Element || reader.Name != "vul") continue;
                         XElement vul;
                         using (var sub = reader.ReadSubtree()) vul = XElement.Load(sub);
-                        var linux = vul.Descendants("soft").Where(s => string.Equals((string)s.Element("name"), "Linux", StringComparison.OrdinalIgnoreCase)).ToList();
-                        if (linux.Count == 0) continue;
+                        var linux = vul.Descendants("soft").Where(s => string.Equals(Clean((string)s.Element("name")), "Linux", StringComparison.OrdinalIgnoreCase)).ToList();
+                        var redOs = vul.Descendants("os").Where(s => IsRedOs(Clean((string)s.Element("name")), Clean((string)s.Element("vendor")))).ToList();
                         string id = ((string)vul.Element("identifier") ?? "").Trim();
                         if (!id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) continue;
                         var rec = new LinuxBduRecord
@@ -140,12 +237,13 @@ namespace RedOSPackageUpdater
                             Severity = Severity((string)vul.Element("severity"))
                         };
                         foreach (XElement soft in linux) AddUnique(rec.Versions, Clean((string)soft.Element("version")));
+                        foreach (XElement os in redOs) AddUnique(rec.RedOsVersions, Clean((string)os.Element("version")));
                         foreach (XElement alias in vul.Descendants("identifier"))
                         {
                             string value = Clean(alias.Value);
                             if (value.StartsWith("CVE-", StringComparison.OrdinalIgnoreCase)) AddUnique(rec.Cves, value.ToUpperInvariant());
                         }
-                        if (rec.Versions.Count > 0) records.Add(rec);
+                        if (rec.Versions.Count > 0 || rec.RedOsVersions.Count > 0 || id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) records.Add(rec);
                     }
                 }
             }
@@ -178,6 +276,38 @@ namespace RedOSPackageUpdater
         {
             Match m = Regex.Match(osInfo ?? "", "\\((\\d+\\.\\d+\\.\\d+(?:-rc\\d+)?)(?:-[^()]*)?\\)\\s*$");
             return m.Success ? m.Groups[1].Value : "";
+        }
+        internal static string RedOsVersion(string osInfo)
+        {
+            Match m = Regex.Match(osInfo ?? "", "(?:RED\\s*OS|РЕД\\s*ОС)[^0-9]*(\\d+(?:\\.\\d+)*)", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value : "";
+        }
+        private static bool SameOsVersion(string host, string card)
+        {
+            if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(card)) return false;
+            Match m = Regex.Match(card, "\\d+(?:\\.\\d+)*");
+            return m.Success && string.Equals(host, m.Value, StringComparison.OrdinalIgnoreCase);
+        }
+        internal static bool AppliesToRedOs(string hostVersion, IEnumerable<string> cardVersions)
+        {
+            return (cardVersions ?? new string[0]).Any(v => SameOsVersion(hostVersion, v));
+        }
+        internal static bool IsKernelPackage(string package)
+        {
+            return Regex.IsMatch(package ?? "", "^kernel(?:$|[-_])", RegexOptions.IgnoreCase);
+        }
+        internal static bool IsActiveKernelVersion(string installed, string active)
+        {
+            Match installedVersion = Regex.Match(installed ?? "", "\\d+\\.\\d+\\.\\d+(?:-rc\\d+)?", RegexOptions.IgnoreCase);
+            Match activeVersion = Regex.Match(active ?? "", "\\d+\\.\\d+\\.\\d+(?:-rc\\d+)?", RegexOptions.IgnoreCase);
+            return installedVersion.Success && activeVersion.Success &&
+                string.Equals(installedVersion.Value, activeVersion.Value, StringComparison.OrdinalIgnoreCase);
+        }
+        private static bool IsRedOs(string name, string vendor)
+        {
+            return Regex.IsMatch(name ?? "", "^(?:RED\\s*OS|РЕД\\s*ОС)$", RegexOptions.IgnoreCase) ||
+                (name ?? "").IndexOf("РЕД ОС", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                (vendor ?? "").IndexOf("Ред Софт", StringComparison.OrdinalIgnoreCase) >= 0;
         }
         private static bool SameBranch(string a, string b) { string[] x = a.Split('.'), y = b.Split('.'); return x.Length > 1 && y.Length > 1 && x[0] == y[0] && x[1] == y[1]; }
         private static int Compare(string a, string b)

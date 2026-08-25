@@ -9,6 +9,11 @@ namespace RedOSPackageUpdater
 
         private async Task CheckAppUpdate(bool silent)
         {
+            if (_running)
+            {
+                if (!silent) AppDialog.Info(this, "Операция выполняется", "Проверка версии будет доступна после завершения текущей операции.");
+                return;
+            }
             if (_updateCheckRunning) return;
             _updateCheckRunning = true;
             UpdateProgressDialog updateProgress = null;

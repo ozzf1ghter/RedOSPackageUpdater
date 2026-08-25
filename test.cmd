@@ -8,12 +8,15 @@ if not exist tests mkdir tests
   /reference:System.dll /reference:System.Core.dll /reference:System.Web.Extensions.dll ^
   /reference:System.Xml.Linq.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll ^
   tests\ParserTests.cs src\Models.cs src\PkgOpOutputParser.cs src\BduFindingEnricher.cs ^
-  src\Infrastructure.cs src\ConfigurationRules.cs src\FstecLinuxCatalog.cs src\VulnerabilityDb.cs src\VulnerabilityReportService.cs src\BuildInfo.cs src\Store.cs src\Crypto.cs
+  src\Infrastructure.cs src\ConfigurationRules.cs src\UiLayoutRules.cs src\FstecLinuxCatalog.cs src\VulnerabilityDb.cs src\VulnerabilityReportService.cs src\BuildInfo.cs src\Store.cs src\Crypto.cs
 if errorlevel 1 exit /b 1
 tests\ParserTests.exe
 set RESULT=%ERRORLEVEL%
 del tests\ParserTests.exe >nul 2>&1
 if not "%RESULT%"=="0" exit /b %RESULT%
+
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\UiContractTests.ps1
+if errorlevel 1 exit /b 1
 
 set BASH_EXE=C:\Program Files\Git\bin\bash.exe
 if exist "%BASH_EXE%" (

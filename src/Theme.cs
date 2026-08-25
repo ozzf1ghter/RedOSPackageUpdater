@@ -11,31 +11,54 @@ namespace RedOSPackageUpdater
     // и expression-bodied свойств.
     internal static class Theme
     {
-        public static readonly Color Bg          = Color.FromArgb(233, 235, 239);
-        public static readonly Color SidebarBg   = Color.FromArgb(238, 240, 243);
-        public static readonly Color Surface     = Color.White;
-        public static readonly Color Text        = Color.FromArgb(30, 33, 39);
-        public static readonly Color Muted       = Color.FromArgb(104, 110, 120);
-        public static readonly Color Disabled    = Color.FromArgb(190, 193, 199);
-        public static readonly Color Border      = Color.FromArgb(188, 193, 202);
-        public static readonly Color Accent      = Color.FromArgb(37, 99, 235);
-        public static readonly Color AccentHover = Color.FromArgb(29, 78, 216);
-        public static readonly Color AccentDown  = Color.FromArgb(30, 64, 175);
-        public static readonly Color AccentTint  = Color.FromArgb(235, 242, 255);   // светлая заливка для "+ Система/Узел"
-        public static readonly Color Danger      = Color.FromArgb(201, 58, 58);
-        public static readonly Color DangerHover = Color.FromArgb(176, 44, 44);
-        public static readonly Color DangerTint  = Color.FromArgb(253, 237, 237);
-        public static readonly Color Good        = Color.FromArgb(34, 139, 84);
-        public static readonly Color Warn        = Color.FromArgb(181, 125, 11);
-        public static readonly Color GridLine    = Color.FromArgb(224, 227, 233);
-        public static readonly Color HeaderBg    = Color.FromArgb(240, 241, 245);
-        public static readonly Color RowAlt      = Color.FromArgb(246, 247, 249);
-        public static readonly Color Sel         = Color.FromArgb(222, 235, 255);
+        public static Color Bg, SidebarBg, Surface, Text, Muted, Disabled, Border, Accent, AccentHover,
+            AccentDown, AccentTint, Danger, DangerHover, DangerTint, Good, Warn, GridLine, HeaderBg,
+            RowAlt, Sel, NavigationBg, NavigationHover, NavigationActive, NavigationText;
+        public static bool IsDark { get; private set; }
 
-        public static readonly Font UiFont      = new Font("Segoe UI", 9F, FontStyle.Regular);
-        public static readonly Font UiFontBold  = new Font("Segoe UI", 9F, FontStyle.Bold);
+        public static readonly Font UiFont      = new Font("Segoe UI", 9.25F, FontStyle.Regular);
+        public static readonly Font UiFontBold  = new Font("Segoe UI Semibold", 9.25F, FontStyle.Regular);
         public static readonly Font UiFontSmall = new Font("Segoe UI", 8F, FontStyle.Bold);
+        public static readonly Font UiFontBodyLarge = new Font("Segoe UI", 9.5F, FontStyle.Regular);
+        public static readonly Font UiFontHeading = new Font("Segoe UI Semibold", 10.5F, FontStyle.Regular);
+        public static readonly Font UiFontHeadingLarge = new Font("Segoe UI Semibold", 11F, FontStyle.Regular);
+        public static readonly Font UiFontPageTitle = new Font("Segoe UI Semibold", 16F, FontStyle.Regular);
+        public static readonly Font UiFontBrand = new Font("Segoe UI Semibold", 10F, FontStyle.Regular);
+        public static readonly Font UiFontBrandMark = new Font("Segoe UI Semibold", 15F, FontStyle.Regular);
+        public static readonly Font UiFontBrandSmall = new Font("Segoe UI", 8.5F, FontStyle.Regular);
         public static readonly Font Mono        = new Font("Consolas", 9F, FontStyle.Regular);
+
+        static Theme() { Configure(false); }
+
+        public static void Configure(bool dark)
+        {
+            IsDark = dark;
+            Accent = dark ? Color.FromArgb(99, 145, 255) : Color.FromArgb(38, 91, 207);
+            AccentHover = dark ? Color.FromArgb(121, 161, 255) : Color.FromArgb(30, 75, 177);
+            AccentDown = dark ? Color.FromArgb(76, 122, 231) : Color.FromArgb(24, 61, 148);
+            Danger = dark ? Color.FromArgb(235, 98, 98) : Color.FromArgb(201, 58, 58);
+            DangerHover = dark ? Color.FromArgb(244, 121, 121) : Color.FromArgb(176, 44, 44);
+            Good = dark ? Color.FromArgb(75, 196, 132) : Color.FromArgb(34, 139, 84);
+            Warn = dark ? Color.FromArgb(235, 178, 73) : Color.FromArgb(181, 125, 11);
+            if (dark)
+            {
+                Bg = Color.FromArgb(14, 18, 27); SidebarBg = Color.FromArgb(20, 25, 36); Surface = Color.FromArgb(24, 30, 42);
+                Text = Color.FromArgb(235, 239, 247); Muted = Color.FromArgb(151, 162, 181); Disabled = Color.FromArgb(91, 101, 117);
+                Border = Color.FromArgb(51, 61, 78); HeaderBg = Color.FromArgb(31, 38, 52); RowAlt = Color.FromArgb(27, 34, 47);
+                GridLine = Color.FromArgb(45, 54, 70); Sel = Color.FromArgb(39, 60, 96); AccentTint = Color.FromArgb(30, 49, 82);
+                DangerTint = Color.FromArgb(67, 35, 42); NavigationBg = Color.FromArgb(11, 15, 24);
+                NavigationHover = Color.FromArgb(27, 35, 50); NavigationActive = Color.FromArgb(35, 65, 119); NavigationText = Color.FromArgb(188, 199, 217);
+            }
+            else
+            {
+                Bg = Color.FromArgb(244, 246, 249); SidebarBg = Color.FromArgb(248, 249, 251); Surface = Color.White;
+                Text = Color.FromArgb(27, 36, 51); Muted = Color.FromArgb(101, 112, 130); Disabled = Color.FromArgb(190, 193, 199);
+                Border = Color.FromArgb(218, 223, 231); HeaderBg = Color.FromArgb(247, 248, 250); RowAlt = Color.FromArgb(250, 251, 252);
+                GridLine = Color.FromArgb(231, 234, 239); Sel = Color.FromArgb(230, 238, 253); AccentTint = Color.FromArgb(235, 242, 255);
+                DangerTint = Color.FromArgb(253, 237, 237); NavigationBg = Color.FromArgb(18, 28, 46);
+                NavigationHover = Color.FromArgb(30, 44, 67); NavigationActive = Color.FromArgb(35, 77, 154); NavigationText = Color.FromArgb(205, 214, 228);
+            }
+        }
 
         // ---- Кнопки ----
         // Скругление углов через Control.Region пробовали и убрали: WinForms всё равно рисует
@@ -79,6 +102,8 @@ namespace RedOSPackageUpdater
         // Основная кнопка (акцент, сплошная заливка): Запустить
         public static void Primary(Button b)
         {
+            var modern = b as ModernButton;
+            if (modern != null) { modern.Kind = ModernButtonKind.Primary; modern.Font = UiFontBold; return; }
             FlatBase(b);
             b.FlatAppearance.BorderSize = 0;
             WireDisabledState(b, Accent, Color.White, AccentHover, AccentDown);
@@ -87,6 +112,8 @@ namespace RedOSPackageUpdater
         // Второстепенная кнопка: белый фон, тонкая рамка - Предпроверка и большинство остальных
         public static void Secondary(Button b)
         {
+            var modern = b as ModernButton;
+            if (modern != null) { modern.Kind = ModernButtonKind.Secondary; return; }
             FlatBase(b);
             b.FlatAppearance.BorderColor = Border;
             b.FlatAppearance.BorderSize = 1;
@@ -97,7 +124,7 @@ namespace RedOSPackageUpdater
         // но не конкурирует визуально с основным действием экрана.
         public static Button ToolbarButton(string text, int width)
         {
-            var b = new Button { Text = text, Width = width, Height = 26, Margin = new Padding(4, 0, 0, 0) };
+            var b = new ModernButton { Text = text, Width = width, Height = 28, Margin = new Padding(4, 0, 0, 0) };
             Secondary(b);
             b.Font = UiFont;
             return b;
@@ -106,6 +133,8 @@ namespace RedOSPackageUpdater
         // Опасное действие (жирная заливка): Стоп
         public static void Danger_(Button b)
         {
+            var modern = b as ModernButton;
+            if (modern != null) { modern.Kind = ModernButtonKind.Danger; modern.Font = UiFontBold; return; }
             FlatBase(b);
             b.FlatAppearance.BorderSize = 0;
             WireDisabledState(b, Danger, Color.White, DangerHover, DangerHover);
@@ -131,6 +160,7 @@ namespace RedOSPackageUpdater
         // каждый контрол оформляется один раз - инвариант соблюдён, но его стоит держать в уме.
         public static void Box(Control p)
         {
+            if (p is ModernCard) return;
             p.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (var pen = new Pen(Border))
@@ -237,12 +267,17 @@ namespace RedOSPackageUpdater
 
             if (tree.CheckBoxes)
             {
-                var state = node.Checked ? System.Windows.Forms.VisualStyles.CheckBoxState.CheckedNormal : System.Windows.Forms.VisualStyles.CheckBoxState.UncheckedNormal;
-                bool themed = Application.RenderWithVisualStyles;
-                var size = themed ? CheckBoxRenderer.GetGlyphSize(e.Graphics, state) : new Size(13, 13);
-                var location = new Point(checkX, centerY - size.Height / 2);
-                if (themed) CheckBoxRenderer.DrawCheckBox(e.Graphics, location, state);
-                else ControlPaint.DrawCheckBox(e.Graphics, new Rectangle(location, size), node.Checked ? ButtonState.Checked : ButtonState.Normal);
+                var check = new Rectangle(checkX, centerY - 8, 16, 16);
+                using (GraphicsPath path = ModernButton.Rounded(check, 4))
+                using (var brush = new SolidBrush(node.Checked ? Accent : Surface)) e.Graphics.FillPath(brush, path);
+                using (GraphicsPath path = ModernButton.Rounded(check, 4))
+                using (var pen = new Pen(node.Checked ? Accent : Border)) e.Graphics.DrawPath(pen, path);
+                if (node.Checked)
+                    using (var pen = new Pen(Color.White, 2F))
+                    {
+                        pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round;
+                        e.Graphics.DrawLines(pen, new[] { new Point(check.Left + 4, centerY), new Point(check.Left + 7, centerY + 3), new Point(check.Left + 13, centerY - 3) });
+                    }
             }
 
             var bounds = new Rectangle(textX, row.Top, Math.Max(0, tree.ClientSize.Width - textX - 4), row.Height);
@@ -252,14 +287,11 @@ namespace RedOSPackageUpdater
                 TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.Left);
         }
 
-        // ---- MenuStrip ----
-        public static void Menu(MenuStrip m)
+        public static void ContextMenu(ContextMenuStrip menu)
         {
-            m.BackColor = Surface;
-            m.ForeColor = Text;
-            m.Font = UiFont;
-            m.Renderer = new ToolStripProfessionalRenderer(new MenuColors());
-            m.GripStyle = ToolStripGripStyle.Hidden;
+            menu.BackColor = Surface; menu.ForeColor = Text; menu.Font = UiFont;
+            menu.ShowImageMargin = false; menu.Padding = new Padding(5);
+            menu.Renderer = new ToolStripProfessionalRenderer(new MenuColors());
         }
 
         // ---- Подзаголовок секции (маленькая серая надпись капсом - "СЕРВЕРЫ", "ОЧЕРЕДЬ") ----
@@ -296,10 +328,34 @@ namespace RedOSPackageUpdater
         public static void Dialog(Form f)
         {
             f.Font = UiFont;
+            f.AutoScaleMode = AutoScaleMode.Dpi;
             f.BackColor = Surface;
             f.ForeColor = Text;
             f.ShowInTaskbar = false;
             ApplyDialogControls(f);
+            AnimateDialog(f);
+        }
+
+        public static void AnimateDialog(Form form)
+        {
+            if (form == null || !SystemInformation.IsMenuAnimationEnabled) return;
+            try { form.Opacity = 0D; }
+            catch { return; }
+            form.Shown += delegate
+            {
+                var timer = new Timer { Interval = 16 };
+                timer.Tick += delegate
+                {
+                    if (form.IsDisposed) { timer.Stop(); timer.Dispose(); return; }
+                    try
+                    {
+                        form.Opacity = Math.Min(1D, form.Opacity + 0.16D);
+                        if (form.Opacity >= 1D) { timer.Stop(); timer.Dispose(); }
+                    }
+                    catch { timer.Stop(); timer.Dispose(); }
+                };
+                timer.Start();
+            };
         }
 
         private static void ApplyDialogControls(Control parent)
@@ -321,30 +377,28 @@ namespace RedOSPackageUpdater
                     if (check != null) Check(check);
                     var grid = c as DataGridView;
                     if (grid != null) Grid(grid);
+                    var panel = c as Panel;
+                    if (panel != null && !(panel is ModernCard) && panel.BackColor != Color.Transparent) panel.BackColor = Surface;
                 }
                 if (c.HasChildren) ApplyDialogControls(c);
             }
         }
 
-        // светлая палитра для меню
-        private class MenuColors : ProfessionalColorTable
+        private sealed class MenuColors : ProfessionalColorTable
         {
-            public MenuColors() { this.UseSystemColors = false; }
+            public MenuColors() { UseSystemColors = false; }
             public override Color MenuItemSelected { get { return Sel; } }
             public override Color MenuItemSelectedGradientBegin { get { return Sel; } }
             public override Color MenuItemSelectedGradientEnd { get { return Sel; } }
             public override Color MenuItemBorder { get { return Accent; } }
             public override Color MenuBorder { get { return Border; } }
-            public override Color MenuItemPressedGradientBegin { get { return Surface; } }
-            public override Color MenuItemPressedGradientEnd { get { return Surface; } }
             public override Color ToolStripDropDownBackground { get { return Surface; } }
             public override Color ImageMarginGradientBegin { get { return Surface; } }
             public override Color ImageMarginGradientMiddle { get { return Surface; } }
             public override Color ImageMarginGradientEnd { get { return Surface; } }
             public override Color SeparatorDark { get { return Border; } }
-            public override Color MenuStripGradientBegin { get { return Surface; } }
-            public override Color MenuStripGradientEnd { get { return Surface; } }
         }
+
     }
 
     // Статус-чип: скруглённая цветная плашка вместо голого текста ("идёт...", "Готово", "OK 5 / FAIL 1").
@@ -374,9 +428,9 @@ namespace RedOSPackageUpdater
             Text = text;
             switch (kind)
             {
-                case Kind.Busy: _bg = Color.FromArgb(224, 234, 255); _fg = Theme.AccentDown; break;
-                case Kind.Good: _bg = Color.FromArgb(223, 242, 227); _fg = Theme.Good; break;
-                case Kind.Warn: _bg = Color.FromArgb(252, 238, 210); _fg = Theme.Warn; break;
+                case Kind.Busy: _bg = Theme.IsDark ? Color.FromArgb(31, 52, 88) : Color.FromArgb(224, 234, 255); _fg = Theme.IsDark ? Theme.Accent : Theme.AccentDown; break;
+                case Kind.Good: _bg = Theme.IsDark ? Color.FromArgb(29, 63, 49) : Color.FromArgb(223, 242, 227); _fg = Theme.Good; break;
+                case Kind.Warn: _bg = Theme.IsDark ? Color.FromArgb(67, 52, 26) : Color.FromArgb(252, 238, 210); _fg = Theme.Warn; break;
                 case Kind.Bad:  _bg = Theme.DangerTint; _fg = Theme.DangerHover; break;
                 default:        _bg = Theme.HeaderBg; _fg = Theme.Muted; break;
             }

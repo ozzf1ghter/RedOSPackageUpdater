@@ -25,21 +25,14 @@ namespace RedOSPackageUpdater
         private const string Repo = "RedOSPackageUpdater";
         public static UpdateInfo Check()
         {
-            // В обычном случае (обновлений нет) достаточно одного лёгкого запроса к raw.
-            // GitHub API иногда отвечает 504; обращаемся к нему только когда версия реально новее.
-            UpdateInfo latest = ParseManifest(ReadTextWithRetry("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/main/update.json"));
-            if (!latest.IsNewer) return latest;
-
-            // Сначала фиксируем SHA вершины main. И manifest, и EXE затем читаются строго из
-            // этого коммита, чтобы во время push не смешать файлы двух разных версий.
-            var commit = ApiObject("/repos/" + Owner + "/" + Repo + "/commits/main");
-            string commitSha = commit != null && commit.ContainsKey("sha") ? Convert.ToString(commit["sha"]) : "";
-            if (!IsGitSha(commitSha)) throw new InvalidDataException("GitHub не вернул идентификатор версии");
-            var content = ApiObject("/repos/" + Owner + "/" + Repo + "/contents/update.json?ref=" + commitSha);
-            string manifest = DecodeContent(content);
-            UpdateInfo pinned = ParseManifest(manifest);
-            pinned.CommitSha = commitSha;
-            return pinned;
+            // Один запрос к raw достаточно надёжен и заметно быстрее трёх
+            // последовательных обращений к GitHub API. Возможная гонка во время
+            // публикации безопасна: загруженный EXE обязательно сверяется с SHA-256
+            // из манифеста и при несовпадении не устанавливается.
+            UpdateInfo latest = ParseManifest(ReadTextWithRetry(
+                "https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/main/update.json"));
+            latest.CommitSha = "main";
+            return latest;
         }
 
         private static UpdateInfo ParseManifest(string manifest)
@@ -60,7 +53,8 @@ namespace RedOSPackageUpdater
         public static string Download(UpdateInfo info, Action<long, long> progress)
         {
             if (info == null) throw new ArgumentNullException("info");
-            if (!IsGitSha(info.CommitSha)) throw new InvalidDataException("Не задан коммит обновления");
+            if (!IsGitSha(info.CommitSha) && !string.Equals(info.CommitSha, "main", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Не задан источник обновления");
             string current = Process.GetCurrentProcess().MainModule.FileName;
             string next = current + ".update";
             string actual;
@@ -141,7 +135,9 @@ namespace RedOSPackageUpdater
 
         private static string ReadTextWithRetry(string url)
         {
-            return WebRequests.Retry(() => WebRequests.ReadUtf8(WebRequests.Create(url, 15000)), 3);
+            // Ручная проверка должна быстро вернуть понятную ошибку, а не держать
+            // интерфейс до 45 секунд на трёх системных таймаутах.
+            return WebRequests.Retry(() => WebRequests.ReadUtf8(WebRequests.Create(url, 8000)), 1);
         }
 
         private static string DecodeContent(Dictionary<string, object> obj)

@@ -30,6 +30,9 @@ for %%D in (libs\*.dll) do set RES=!RES! /resource:"%%D","%%~nxD"
 REM --- resources: profiles ---
 for %%P in (profiles\*.sh) do set RES=!RES! /resource:"%%P","%%~nxP"
 
+REM --- compact FSTEC applicability catalog for offline first run ---
+if exist data\linux-bdu.zip set RES=!RES! /resource:"data\linux-bdu.zip","linux-bdu.zip"
+
 REM --- icon (exe file + window) ---
 set ICON=
 if exist icon.ico (

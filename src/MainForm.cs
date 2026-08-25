@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -17,9 +18,12 @@ namespace RedOSPackageUpdater
         private Dictionary<string, CachedCred> _cache;
 
         private TreeView _tree;
+        private Label _treeEmpty;
+        private ModernTextBox _treeSearch;
         private ComboBox _profile;
         private CheckBox _noReboot;
         private ToolTip _tips;
+        private ContextMenuStrip _nodeActionsMenu;
         private Label _pkgLabel;
         private TextBox _pkgBox;
         private Button _btnRun, _btnStop, _btnPreview;
@@ -29,18 +33,22 @@ namespace RedOSPackageUpdater
         private const int PkgLockIndex = 6;      // versionlock: закрепить версию
         private const int PkgUnlockIndex = 7;    // versionlock: снять закрепление
         private const int PkgLockListIndex = 8;  // versionlock: показать закреплённые (только чтение)
-        private MenuStrip _menu;
-        private ToolStripMenuItem _vulnStatusMenu;
         private Panel _leftPanel;
         private SplitContainer _workspaceSplit;
         private SplitContainer _contentSplit;
         private Button _btnToggleLog;
+        private Panel _pageHost;
+        private Panel _serversPage, _operationsPage, _fstecPage, _reportsPage, _accessPage, _settingsPage;
+        private Label _selectionLabel;
+        private readonly Dictionary<string, Button> _navigationButtons = new Dictionary<string, Button>();
+        private readonly List<Control> _configurationControls = new List<Control>();
         private StatusChip _status;
         private Label _excluded;
-        private ProgressBar _fstecProgress;
+        private ModernProgressBar _fstecProgress;
         private Label _fstecProgressLabel;
         private DataGridView _summary;
         private TextBox _log;
+        private ModernTextBox _summarySearch;
 
         private CancellationTokenSource _cts;
         private volatile bool _running;
@@ -48,7 +56,8 @@ namespace RedOSPackageUpdater
         // Разрешение действует только до завершения текущей операции. Нужен для массового первого
         // подключения: оператор подтверждает один ключ и осознанно разрешает остальные новые ключи пакета.
         private volatile bool _trustUnknownHostKeysForOperation;
-        private readonly Dictionary<string, int> _rowByHost = new Dictionary<string, int>();
+        private readonly Dictionary<string, DataGridViewRow> _rowByHost = new Dictionary<string, DataGridViewRow>();
+        private readonly HashSet<string> _checkedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, StringBuilder> _hostLogs = new Dictionary<string, StringBuilder>();
         private readonly object _logLock = new object();
         // Пишется из UI-потока (ShowHostLog/ShowAllLogs/ResetSummary), читается из фоновых SSH-потоков
@@ -62,17 +71,44 @@ namespace RedOSPackageUpdater
 
         public MainForm()
         {
+            LoadConfigOrSeed();
+            Theme.Configure(string.Equals(_cfg.UiTheme, "dark", StringComparison.OrdinalIgnoreCase));
             Text = "RED OS Package Updater";
+            AutoScaleMode = AutoScaleMode.Dpi;
+            KeyPreview = true;
             Width = 1240; Height = 800; MinimumSize = new Size(980, 640); StartPosition = FormStartPosition.CenterScreen;
             Font = Theme.UiFont;          // базовый шрифт наследуют все дочерние контролы
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
-            LoadConfigOrSeed();
             BuildUi();
+            KeyDown += MainFormKeyDown;
             RebuildTree();
             RefreshExcluded();
             Shown += delegate { ApplyInitialWorkspaceLayout(); };
             Shown += async (s, e) => { await CheckAppUpdate(true); };
+        }
+
+        private void MainFormKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.F)
+            {
+                if (_serversPage != null && _serversPage.Visible && _treeSearch != null) _treeSearch.Focus();
+                else if (_summarySearch != null) _summarySearch.Focus();
+                e.Handled = true; e.SuppressKeyPress = true; return;
+            }
+            if (e.KeyCode == Keys.Escape)
+            {
+                if (_treeSearch != null && _treeSearch.Focused && _treeSearch.TextLength > 0) _treeSearch.Clear();
+                else if (_summarySearch != null && _summarySearch.Focused && _summarySearch.TextLength > 0) _summarySearch.Clear();
+                else return;
+                e.Handled = true; e.SuppressKeyPress = true; return;
+            }
+            if (e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                string[] pages = { "servers", "operations", "fstec", "reports", "access", "settings" };
+                ShowApplicationPage(pages[(int)e.KeyCode - (int)Keys.D1]);
+                e.Handled = true; e.SuppressKeyPress = true;
+            }
         }
 
         // ---------- Загрузка конфига / seed ----------
@@ -95,49 +131,18 @@ namespace RedOSPackageUpdater
         // ---------- UI ----------
         private void BuildUi()
         {
-            var menu = new MenuStrip();
-            var mFile = new ToolStripMenuItem("Файл");
-            mFile.DropDownItems.Add("Сохранить конфиг", null, (s, e) => { Store.SaveConfig(_cfg); SetStatus("Конфиг сохранён"); });
-            mFile.DropDownItems.Add(new ToolStripSeparator());
-            mFile.DropDownItems.Add("Экспорт (узлы+учётки)...", null, (s, e) => DoExport());
-            mFile.DropDownItems.Add("Импорт (узлы+учётки)...", null, (s, e) => DoImport());
-            mFile.DropDownItems.Add(new ToolStripSeparator());
-            mFile.DropDownItems.Add("Открыть папку логов", null, (s, e) => { try { Directory.CreateDirectory(Store.LogsDir); } catch { } OpenPath(Store.LogsDir); });
-            mFile.DropDownItems.Add("Выход", null, (s, e) => Close());
-            var mCreds = new ToolStripMenuItem("Учётки", null, (s, e) => EditCredentials());
-            var mHostKeys = new ToolStripMenuItem("SSH-ключи", null, (s, e) => ManageHostKeys());
-            var mExcl = new ToolStripMenuItem("Исключения", null, (s, e) => EditExclusions());
-            var mRepo = new ToolStripMenuItem("Обновить репозиторий", null, (s, e) => OpenRepo());
-            var mVuln = new ToolStripMenuItem("Уязвимости ФСТЭК");
-            mVuln.DropDownItems.Add("Проверить отмеченные", null, (s, e) => RunVulnerabilityScan());
-            mVuln.DropDownItems.Add(new ToolStripSeparator());
-            mVuln.DropDownItems.Add("Обновить базу из интернета", null, (s, e) => UpdateVulnerabilityDb());
-            mVuln.DropDownItems.Add("Импортировать базу из файла...", null, (s, e) => ImportVulnerabilityDb());
-            mVuln.DropDownItems.Add(new ToolStripSeparator());
-            _vulnStatusMenu = new ToolStripMenuItem(VulnerabilityDb.StatusText()) { Enabled = false };
-            mVuln.DropDownItems.Add(_vulnStatusMenu);
-            var mSettings = new ToolStripMenuItem("Настройки", null, (s, e) => EditSettings());
-            var mAbout = new ToolStripMenuItem("О программе");
-            mAbout.DropDownItems.Add("О RED OS Package Updater", null, (s, e) =>
-                AppDialog.Info(this, "О программе", "RED OS Package Updater " + AppUpdater.CurrentVersion + "\nМассовое обновление серверов RED OS по SSH."));
-            mAbout.DropDownItems.Add(new ToolStripSeparator());
-            mAbout.DropDownItems.Add("Проверить обновления", null, async (s, e) => await CheckAppUpdate(false));
-            mAbout.DropDownItems.Add(new ToolStripMenuItem("Текущая версия: " + AppUpdater.CurrentVersion) { Enabled = false });
-            menu.Items.AddRange(new ToolStripItem[] { mFile, mCreds, mHostKeys, mExcl, mRepo, mVuln, mSettings, mAbout });
-            Theme.Menu(menu);
-
             // Верхняя панель запуска
-            var top = new Panel { Dock = DockStyle.Top, Height = 82, BackColor = Theme.Surface, Padding = new Padding(12, 0, 12, 0) };
+            var top = new Panel { Dock = DockStyle.Top, Height = 94, BackColor = Theme.Surface, Padding = new Padding(12, 0, 12, 0) };
             Theme.EdgeLine(top, DockStyle.Bottom);
             // AutoSize=true у Label по умолчанию, но если после Text задать Width в том же
             // инициализаторе - явное значение переигрывает автоматически посчитанное, и текст
             // обрезается по этой (слишком узкой) ширине. Не задаём Width - пусть считает сам.
             var profileLbl = new Label { Text = "Сценарий", Left = 12, Top = 8, AutoSize = true, ForeColor = Theme.Muted, Font = Theme.UiFontSmall };
             top.Controls.Add(profileLbl);
-            var profileBox = new Panel { Left = 12, Top = 28, Width = 286, Height = 30, BackColor = Theme.Surface };
+            var profileBox = new ModernCard { Left = 12, Top = 28, Width = 286, Height = 30, BackColor = Theme.Surface, CornerRadius = 6 };
             Theme.Box(profileBox);
             top.Controls.Add(profileBox);
-            _profile = new ComboBox { Left = 2, Top = 3, Width = 282, DropDownStyle = ComboBoxStyle.DropDownList };
+            _profile = new ModernComboBox { Left = 2, Top = 2, Width = 282, Height = 26 };
             Theme.Combo(_profile);
             _profile.Items.Add("Ядро kernel-lt + security");
             _profile.Items.Add("Только security");
@@ -151,7 +156,7 @@ namespace RedOSPackageUpdater
             _profile.SelectedIndex = 0;
             _profile.SelectedIndexChanged += (s, e) => UpdateModeUi();
             profileBox.Controls.Add(_profile);
-            _noReboot = new CheckBox { Left = 310, Top = 31, Width = 180, Text = "Не перезагружать" };
+            _noReboot = new ModernCheckBox { Left = 12, Top = 64, Width = 170, Text = "Не перезагружать", BackColor = Theme.Surface };
             Theme.Check(_noReboot);
             top.Controls.Add(_noReboot);
             _tips = new ToolTip { AutoPopDelay = 20000, InitialDelay = 400, ReshowDelay = 100 };
@@ -161,30 +166,30 @@ namespace RedOSPackageUpdater
                 "Режим для предварительной установки вне окна обслуживания - перезагрузить все узлы можно\n" +
                 "позже отдельным запуском (профиль \"Обновить пакеты\" + reboot, либо вручную).");
             // Поле пакетов (видно только в режимах "пакеты"), на второй строке вместо строки исключений.
-            _pkgLabel = new Label { Left = 310, Top = 8, Width = 58, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted, Font = Theme.UiFontSmall };
+            _pkgLabel = new Label { Left = 12, Top = 66, Width = 72, Height = 20, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted, Font = Theme.UiFontSmall, TextAlign = ContentAlignment.MiddleLeft };
             top.Controls.Add(_pkgLabel);
-            _pkgBox = new TextBox { Left = 310, Top = 28, Width = 400, Height = 30, Visible = false, Font = Theme.Mono, BorderStyle = BorderStyle.FixedSingle };
+            _pkgBox = new ModernTextBox { Left = 88, Top = 61, Width = 400, Height = 28, Visible = false, Font = Theme.Mono, Placeholder = "package или package-version" };
             top.Controls.Add(_pkgBox);
-            _btnPreview = new Button { Width = 130, Height = 32, Text = "Предпроверка" };
+            _btnPreview = new ModernButton { Width = 130, Height = 32, Text = "Предпроверка" };
             _btnPreview.Click += (s, e) => PreviewChecked();
             Theme.Secondary(_btnPreview);
             top.Controls.Add(_btnPreview);
-            _btnRun = new Button { Width = 174, Height = 32, Text = "Запустить отмеченные" };
+            _btnRun = new ModernButton { Width = 174, Height = 32, Text = "Запустить отмеченные" };
             _btnRun.Click += (s, e) => RunChecked();
             Theme.Primary(_btnRun);
             top.Controls.Add(_btnRun);
-            _btnStop = new Button { Width = 72, Height = 32, Text = "Стоп", Enabled = false };
+            _btnStop = new ModernButton { Width = 72, Height = 32, Text = "Стоп", Enabled = false };
             _btnStop.Click += (s, e) => { if (_cts != null) _cts.Cancel(); SetStatus("Останавливаю..."); };
             Theme.Danger_(_btnStop);
             top.Controls.Add(_btnStop);
             _status = new StatusChip { Width = 158, Height = 28 };
             _status.SetStatus("Готово", StatusChip.Kind.Idle);
             top.Controls.Add(_status);
-            _excluded = new Label { Left = 12, Top = 62, Width = 1100, Height = 18, ForeColor = Theme.Danger, Cursor = Cursors.Hand, Text = "" };
+            _excluded = new Label { Left = 190, Top = 65, Width = 900, Height = 18, ForeColor = Theme.Danger, Cursor = Cursors.Hand, Text = "", AutoEllipsis = true };
             _excluded.Click += (s, e) => EditExclusions();
             top.Controls.Add(_excluded);
-            _fstecProgress = new ProgressBar { Left = 12, Top = 63, Width = 880, Height = 12, Minimum = 0, Maximum = 100, Visible = false };
-            _fstecProgressLabel = new Label { Left = 900, Top = 60, Width = 262, Height = 18, TextAlign = ContentAlignment.MiddleRight, ForeColor = Theme.Muted, Visible = false };
+            _fstecProgress = new ModernProgressBar { Left = 12, Top = 69, Width = 880, Height = 8, Minimum = 0, Maximum = 100, Visible = false };
+            _fstecProgressLabel = new Label { Left = 900, Top = 63, Width = 262, Height = 20, TextAlign = ContentAlignment.MiddleRight, ForeColor = Theme.Muted, Visible = false };
             top.Controls.Add(_fstecProgress);
             top.Controls.Add(_fstecProgressLabel);
             top.Resize += delegate { LayoutCommandBar(top, profileBox); };
@@ -198,7 +203,8 @@ namespace RedOSPackageUpdater
             // Segoe UI шире, чем шрифт-заместитель в песочнице, где вёрстка проверялась).
             var left = new Panel { Dock = DockStyle.Fill, BackColor = Theme.SidebarBg, Padding = new Padding(8, 6, 8, 8) };
             Theme.EdgeLine(left, DockStyle.Right);
-            var treeHeader = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Theme.SidebarBg };
+            var treeHeader = new Panel { Dock = DockStyle.Top, Height = 68, BackColor = Theme.SidebarBg };
+            var treeActions = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Theme.SidebarBg };
             var treeTitle = Theme.SectionLabel("Серверы");
             treeTitle.Left = 2; treeTitle.Top = 5; treeTitle.Width = 150; treeTitle.Height = 20;
             var markNone = Theme.ToolbarButton("Снять", 56);
@@ -208,9 +214,14 @@ namespace RedOSPackageUpdater
             markNone.Click += (s, e) => CheckAll(false);
             _tips.SetToolTip(markAll, "Отметить все серверы");
             _tips.SetToolTip(markNone, "Снять все отметки");
-            treeHeader.Controls.Add(treeTitle);
-            treeHeader.Controls.Add(markAll);
-            treeHeader.Controls.Add(markNone);
+            treeActions.Controls.Add(treeTitle);
+            treeActions.Controls.Add(markAll);
+            treeActions.Controls.Add(markNone);
+            _treeSearch = new ModernTextBox { Dock = DockStyle.Bottom, Height = 28, Placeholder = "Поиск серверов..." };
+            _treeSearch.TextChanged += delegate { RebuildTree(); };
+            _tips.SetToolTip(_treeSearch, "Поиск по системе, имени, адресу и роли · Ctrl+F · Esc для очистки");
+            treeHeader.Controls.Add(_treeSearch);
+            treeHeader.Controls.Add(treeActions);
             _tree = new TreeView { Dock = DockStyle.Fill, CheckBoxes = true, HideSelection = false };
             Theme.Tree(_tree);
             _tree.AfterCheck += TreeAfterCheck;
@@ -220,15 +231,18 @@ namespace RedOSPackageUpdater
             AddCompactBtn(leftButtons, "+ Система", 82, () => AddSystem());
             AddCompactBtn(leftButtons, "+ Узел", 68, () => AddNode());
             AddCompactBtn(leftButtons, "Массово", 76, () => BulkNodes());
-            var more = AddCompactBtn(leftButtons, "Ещё ▾", 62, delegate { });
-            var nodeActions = new ContextMenuStrip();
-            nodeActions.Items.Add("Изменить", null, (s, e) => EditSelected());
-            nodeActions.Items.Add("Сервисы системы", null, (s, e) => EditServices());
-            nodeActions.Items.Add(new ToolStripSeparator());
-            nodeActions.Items.Add("Удалить", null, (s, e) => DeleteSelected());
-            more.Click -= more.Tag as EventHandler;
-            more.Click += (s, e) => nodeActions.Show(more, new Point(0, more.Height));
-            left.Controls.Add(_tree);
+            _nodeActionsMenu = new ContextMenuStrip();
+            Theme.ContextMenu(_nodeActionsMenu);
+            _nodeActionsMenu.Items.Add("Изменить", null, (s, e) => EditSelected());
+            _nodeActionsMenu.Items.Add("Сервисы системы", null, (s, e) => EditServices());
+            _nodeActionsMenu.Items.Add(new ToolStripSeparator());
+            _nodeActionsMenu.Items.Add("Удалить", null, (s, e) => DeleteSelected());
+            Button more = null;
+            more = AddCompactBtn(leftButtons, "Ещё ▾", 62, delegate { _nodeActionsMenu.Show(more, new Point(0, more.Height)); });
+            var treeHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
+            _treeEmpty = new Label { Dock = DockStyle.Fill, Text = "Серверов пока нет\r\n\r\nДобавьте систему и первый узел", TextAlign = ContentAlignment.MiddleCenter, ForeColor = Theme.Muted, BackColor = Theme.Surface, Font = Theme.UiFontBodyLarge, Visible = false };
+            treeHost.Controls.Add(_tree); treeHost.Controls.Add(_treeEmpty);
+            left.Controls.Add(treeHost);
             left.Controls.Add(treeHeader);
             left.Controls.Add(leftButtons);
             _leftPanel = left;
@@ -242,7 +256,7 @@ namespace RedOSPackageUpdater
             _contentSplit = split;
             split.Panel1.Padding = new Padding(8, 8, 8, 4);
             split.Panel2.Padding = new Padding(8, 4, 8, 8);
-            _summary = new DataGridView
+            _summary = new ModernDataGridView
             {
                 Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None
@@ -254,6 +268,10 @@ namespace RedOSPackageUpdater
             _btnToggleLog.Dock = DockStyle.Right;
             _btnToggleLog.Click += (s, e) => ToggleLogPanel();
             gridHeader.Controls.Add(_btnToggleLog);
+            _summarySearch = new ModernTextBox { Dock = DockStyle.Right, Width = 226, Height = 26, Placeholder = "Поиск по результатам...", Margin = new Padding(0, 0, 8, 0) };
+            _summarySearch.TextChanged += delegate { FilterSummaryRows(); };
+            _tips.SetToolTip(_summarySearch, "Поиск по всем колонкам результатов · Ctrl+F · Esc для очистки");
+            gridHeader.Controls.Add(_summarySearch); _summarySearch.BringToFront();
             AddCol(Col.System, "Система", 128); AddCol(Col.Name, "Узел", 150); AddCol(Col.Host, "IP / host", 112);
             AddCol(Col.St, "Статус", 92); AddCol(Col.Upd, "Результат", 110); AddCol(Col.Reb, "Reboot", 82);
             AddCol(Col.Pre, "Prestop", 70); AddCol(Col.Post, "Postcheck", 80); AddCol(Col.Ker, "Ядро", 150);
@@ -265,13 +283,13 @@ namespace RedOSPackageUpdater
                 var lf = _summary.Rows[e.RowIndex].Tag as string;
                 if (!string.IsNullOrEmpty(lf) && File.Exists(lf)) OpenPath(lf);
             };
-            _log = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, WordWrap = false, Font = Theme.Mono, BackColor = Color.White, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, HideSelection = false };
+            _log = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, WordWrap = false, Font = Theme.Mono, BackColor = Theme.Surface, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, HideSelection = false };
             _log.KeyDown += (s, e) => { if (e.Control && e.KeyCode == Keys.A) { _log.SelectAll(); e.Handled = true; e.SuppressKeyPress = true; } };
             var logBar = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = Theme.Bg };
-            var btnAllLogs = new Button { Text = "Все узлы", Left = 0, Top = 3, Width = 90, Height = 26 };
+            var btnAllLogs = new ModernButton { Text = "Все узлы", Left = 0, Top = 3, Width = 90, Height = 28 };
             Theme.Secondary(btnAllLogs);
             btnAllLogs.Click += (s, e) => ShowAllLogs();
-            var btnReports = new Button { Text = "Папка отчётов", Left = 96, Top = 3, Width = 118, Height = 26 };
+            var btnReports = new ModernButton { Text = "Папка отчётов", Left = 96, Top = 3, Width = 118, Height = 28 };
             Theme.Secondary(btnReports);
             btnReports.Click += (s, e) => OpenReportsFolder();
             _logHint = new Label { Left = 224, Top = 9, Width = 520, Text = "Выберите строку результата, чтобы видеть журнал только этого узла.", ForeColor = Theme.Muted };
@@ -287,12 +305,7 @@ namespace RedOSPackageUpdater
             split.Panel2.Controls.Add(_log);
             split.Panel2.Controls.Add(logBar);
 
-            _workspaceSplit.Panel2.Controls.Add(split);
-            Controls.Add(_workspaceSplit);
-            Controls.Add(top);
-            Controls.Add(menu);
-            MainMenuStrip = menu;
-            _menu = menu;
+            BuildApplicationShell(top, left, split);
 
             // иконка окна из вшитого ресурса
             try
@@ -360,20 +373,16 @@ namespace RedOSPackageUpdater
         // style==null - обычная второстепенная кнопка; иначе - явный стиль (акцент/опасное действие)
         private Button AddBtn(Control parent, string text, Action act, Action<Button> style)
         {
-            var b = new Button { Text = text, Width = 116, Height = 28, Margin = new Padding(3) };
+            var b = new ModernButton { Text = text, Width = 116, Height = 30, Margin = new Padding(3) };
             if (style != null) style(b); else Theme.Secondary(b);
-            // MessageBox достаточно для операций редактирования конфига (короткие, синхронные) - но
-            // раньше стек трейса нигде не оставалось, только ex.Message в попапе. Дублируем в лог,
-            // чтобы при повторной жалобе было что посмотреть (тот же принцип, что и в AppendLog
-            // рядом - здесь и там: не проглатывать диагностику молча).
-            b.Click += (s, e) => { try { act(); } catch (Exception ex) { AppendLog("ОШИБКА: " + ex); MessageBox.Show(ex.Message); } };
+            b.Click += (s, e) => { try { act(); } catch (Exception ex) { AppendLog("ОШИБКА: " + ex); AppDialog.Error(this, "Ошибка", ex.Message); } };
             parent.Controls.Add(b);
             return b;
         }
 
         private Button AddCompactBtn(Control parent, string text, int width, Action act)
         {
-            var b = new Button { Text = text, Width = width, Height = 28, Margin = new Padding(0, 0, 5, 0) };
+            var b = new ModernButton { Text = text, Width = width, Height = 30, Margin = new Padding(0, 0, 5, 0) };
             Theme.Secondary(b);
             b.Click += (s, e) =>
             {
@@ -387,18 +396,16 @@ namespace RedOSPackageUpdater
         private void LayoutCommandBar(Panel top, Panel profileBox)
         {
             if (top == null || _btnPreview == null) return;
-            int right = top.ClientSize.Width - 12;
-            _status.Left = right - _status.Width;
-            _btnStop.Left = _status.Left - 8 - _btnStop.Width;
-            _btnRun.Left = _btnStop.Left - 8 - _btnRun.Width;
-            _btnPreview.Left = _btnRun.Left - 8 - _btnPreview.Width;
+            CommandBarLayout layout = UiLayoutRules.CommandBar(top.ClientSize.Width, _status.Width);
+            _btnPreview.Width = layout.PreviewWidth; _btnRun.Width = layout.RunWidth; _btnStop.Width = layout.StopWidth;
+            _btnPreview.Left = layout.PreviewLeft; _btnRun.Left = layout.RunLeft; _btnStop.Left = layout.StopLeft;
+            _status.Left = layout.StatusLeft; _status.Visible = !layout.Compact;
             _btnPreview.Top = _btnRun.Top = _btnStop.Top = 27;
             _status.Top = 29;
 
-            // На узком окне поле пакетов заканчивается перед блоком действий.
-            int packageRight = Math.Max(500, _btnPreview.Left - 16);
-            _pkgBox.Width = Math.Max(180, packageRight - _pkgBox.Left);
-            _excluded.Width = Math.Max(200, top.ClientSize.Width - 24);
+            // Вторая строка не конкурирует с действиями и остаётся полезной на минимальном окне.
+            _pkgBox.Width = Math.Max(180, top.ClientSize.Width - _pkgBox.Left - 12);
+            _excluded.Width = Math.Max(160, top.ClientSize.Width - _excluded.Left - 12);
             _fstecProgressLabel.Left = Math.Max(520, top.ClientSize.Width - 274);
             _fstecProgressLabel.Width = Math.Max(150, top.ClientSize.Width - _fstecProgressLabel.Left - 12);
             _fstecProgress.Width = Math.Max(300, _fstecProgressLabel.Left - 24);
@@ -414,12 +421,7 @@ namespace RedOSPackageUpdater
 
         private void ApplyInitialWorkspaceLayout()
         {
-            if (_workspaceSplit != null && _workspaceSplit.Width > 700)
-            {
-                _workspaceSplit.Panel1MinSize = 280;
-                _workspaceSplit.Panel2MinSize = 520;
-                _workspaceSplit.SplitterDistance = Math.Min(348, _workspaceSplit.Width - _workspaceSplit.Panel2MinSize - _workspaceSplit.SplitterWidth);
-            }
+            LayoutServerWorkspace(_workspaceSplit);
             if (_contentSplit != null && _contentSplit.Height > 420)
             {
                 _contentSplit.Panel1MinSize = 220;
@@ -428,9 +430,34 @@ namespace RedOSPackageUpdater
                 _contentSplit.SplitterDistance = Math.Min(desired, _contentSplit.Height - _contentSplit.Panel2MinSize - _contentSplit.SplitterWidth);
             }
         }
+
+        private static void LayoutServerWorkspace(SplitContainer split)
+        {
+            if (split == null || split.ClientSize.Width < 500) return;
+            int width = split.ClientSize.Width;
+            ServerWorkspaceLayout layout = UiLayoutRules.ServerWorkspace(width, split.SplitterWidth);
+            split.Panel1MinSize = 0; split.Panel2MinSize = 0;
+            split.SplitterDistance = layout.SplitterDistance;
+            split.Panel1MinSize = layout.LeftMinimum;
+            split.Panel2MinSize = layout.RightMinimum;
+        }
         private void AddCol(string name, string header, int w)
         {
-            _summary.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = header, Width = w });
+            _summary.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = header, Width = w, SortMode = DataGridViewColumnSortMode.Automatic });
+        }
+
+        private void FilterSummaryRows()
+        {
+            if (_summary == null || _running) return;
+            string query = (_summarySearch == null ? "" : _summarySearch.Text).Trim();
+            foreach (DataGridViewRow row in _summary.Rows)
+            {
+                bool visible = query.Length == 0;
+                if (!visible)
+                    foreach (DataGridViewCell cell in row.Cells)
+                        if (Convert.ToString(cell.Value).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) { visible = true; break; }
+                if (row != _summary.CurrentRow) row.Visible = visible;
+            }
         }
 
         // Ключи колонок грида результатов. Раньше строковые литералы ("st","upd",...) были
@@ -455,6 +482,8 @@ namespace RedOSPackageUpdater
         // ---------- Дерево ----------
         private void RebuildTree()
         {
+            string query = _treeSearch == null ? "" : (_treeSearch.Text ?? "").Trim();
+            _suppressCheck = true;
             _tree.BeginUpdate();
             _tree.Nodes.Clear();
             // Системы и узлы внутри них показываем по алфавиту, а не в порядке добавления в конфиг -
@@ -464,23 +493,38 @@ namespace RedOSPackageUpdater
             systems.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             foreach (var sys in systems)
             {
+                bool systemMatches = query.Length == 0 || (sys.Name ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                var nodes = new List<Node>();
+                foreach (Node candidate in sys.Nodes)
+                    if (systemMatches || (candidate.Display ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        (candidate.Role ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                        nodes.Add(candidate);
+                if (query.Length > 0 && !systemMatches && nodes.Count == 0) continue;
                 // Имя - как обычно, счётчик в хвосте. Длинные имена не обрубаются посимвольно:
                 // TreeView теперь рисует текст сам (Theme.Tree -> OwnerDrawText) с реальным
                 // измерением шрифта и многоточием в конце, если не помещается.
-                string tnText = sys.Name + "  [" + sys.Nodes.Count + "]";
+                string tnText = sys.Name + "  [" + nodes.Count + (query.Length > 0 && nodes.Count != sys.Nodes.Count ? "/" + sys.Nodes.Count : "") + "]";
                 var tn = new TreeNode(tnText) { Tag = sys, NodeFont = Theme.UiFontBold, ToolTipText = tnText };
-                var nodes = new List<Node>(sys.Nodes);
                 nodes.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
                 foreach (var n in nodes)
                 {
-                    var cn = new TreeNode(n.Display) { Tag = n, Checked = false, ToolTipText = n.Display };
-                    if (!n.Enabled) cn.ForeColor = Color.Gray;
+                    var cn = new TreeNode(n.Display) { Tag = n, Checked = _checkedHosts.Contains(n.Host ?? ""), ToolTipText = n.Display };
+                    if (!n.Enabled) cn.ForeColor = Theme.Disabled;
                     tn.Nodes.Add(cn);
                 }
+                tn.Checked = nodes.Count > 0 && nodes.TrueForAll(n => _checkedHosts.Contains(n.Host ?? ""));
                 _tree.Nodes.Add(tn);
             }
             _tree.ExpandAll();
             _tree.EndUpdate();
+            _suppressCheck = false;
+            if (_treeEmpty != null)
+            {
+                _treeEmpty.Text = query.Length > 0 ? "Ничего не найдено\r\n\r\nИзмените поисковый запрос" : "Серверов пока нет\r\n\r\nДобавьте систему и первый узел";
+                _treeEmpty.Visible = _tree.Nodes.Count == 0;
+                if (_treeEmpty.Visible) _treeEmpty.BringToFront();
+            }
+            RefreshSelectionSummary();
         }
 
         private bool _suppressCheck;
@@ -490,14 +534,39 @@ namespace RedOSPackageUpdater
             if (e.Node.Tag is SubSystem)
             {
                 _suppressCheck = true;
-                foreach (TreeNode c in e.Node.Nodes) c.Checked = e.Node.Checked;
+                foreach (TreeNode c in e.Node.Nodes)
+                {
+                    c.Checked = e.Node.Checked;
+                    var childNode = c.Tag as Node;
+                    if (childNode != null)
+                    {
+                        if (e.Node.Checked) _checkedHosts.Add(childNode.Host ?? "");
+                        else _checkedHosts.Remove(childNode.Host ?? "");
+                    }
+                }
                 _suppressCheck = false;
             }
+            else
+            {
+                var node = e.Node.Tag as Node;
+                if (node != null)
+                {
+                    if (e.Node.Checked) _checkedHosts.Add(node.Host ?? "");
+                    else _checkedHosts.Remove(node.Host ?? "");
+                }
+            }
+            RefreshSelectionSummary();
         }
 
         private void ShowTreeMenu(TreeNode node)
         {
             var m = new ContextMenuStrip();
+            Theme.ContextMenu(m);
+            m.Closed += delegate
+            {
+                if (!IsDisposed && IsHandleCreated) BeginInvoke(new Action(m.Dispose));
+                else m.Dispose();
+            };
             if (node.Tag is Node)
             {
                 m.Items.Add("Предпроверка этого узла", null, (s, e) => RunPreviewTargets(CollectSingle(node)));
@@ -530,6 +599,7 @@ namespace RedOSPackageUpdater
         // ---------- Управление узлами/системами ----------
         private void AddSystem()
         {
+            if (!CanEditConfiguration()) return;
             string name = Prompt.Show("Новая система", "Название подсистемы:", "", false, new Size(360, 130));
             if (string.IsNullOrEmpty(name)) return;
             _cfg.Systems.Add(new SubSystem { Name = name.Trim() });
@@ -544,15 +614,17 @@ namespace RedOSPackageUpdater
         }
         private void AddNode()
         {
+            if (!CanEditConfiguration()) return;
             var sys = CurrentSystem();
-            if (sys == null) { MessageBox.Show("Выберите подсистему"); return; }
+            if (sys == null) { AppDialog.Info(this, "Серверы", "Сначала выберите систему."); return; }
             using (var f = new NodeForm(null))
                 if (f.ShowDialog(this) == DialogResult.OK) { sys.Nodes.Add(f.Result); Store.SaveConfig(_cfg); RebuildTree(); }
         }
         private void BulkNodes()
         {
+            if (!CanEditConfiguration()) return;
             var sys = CurrentSystem();
-            if (sys == null) { MessageBox.Show("Выберите подсистему"); return; }
+            if (sys == null) { AppDialog.Info(this, "Серверы", "Сначала выберите систему."); return; }
             using (var f = new BulkNodesForm())
                 if (f.ShowDialog(this) == DialogResult.OK && f.Result != null && f.Result.Count > 0)
                 {
@@ -563,6 +635,7 @@ namespace RedOSPackageUpdater
         }
         private void EditSelected()
         {
+            if (!CanEditConfiguration()) return;
             var n = _tree.SelectedNode; if (n == null) return;
             if (n.Tag is Node)
             {
@@ -579,23 +652,25 @@ namespace RedOSPackageUpdater
         }
         private void DeleteSelected()
         {
+            if (!CanEditConfiguration()) return;
             var n = _tree.SelectedNode; if (n == null) return;
             if (n.Tag is Node)
             {
                 var sys = CurrentSystem();
-                if (sys != null && MessageBox.Show("Удалить узел " + ((Node)n.Tag).Host + "?", "Удаление", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                if (sys != null && AppDialog.Confirm(this, "Удаление узла", "Удалить узел " + ((Node)n.Tag).Host + "?", "Удалить"))
                 { sys.Nodes.Remove((Node)n.Tag); Store.SaveConfig(_cfg); RebuildTree(); }
             }
             else if (n.Tag is SubSystem)
             {
-                if (MessageBox.Show("Удалить систему " + ((SubSystem)n.Tag).Name + " со всеми узлами?", "Удаление", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                if (AppDialog.Confirm(this, "Удаление системы", "Удалить систему «" + ((SubSystem)n.Tag).Name + "» со всеми узлами?", "Удалить"))
                 { _cfg.Systems.Remove((SubSystem)n.Tag); Store.SaveConfig(_cfg); RebuildTree(); }
             }
         }
         private void EditServices()
         {
+            if (!CanEditConfiguration()) return;
             var sys = CurrentSystem();
-            if (sys == null) { MessageBox.Show("Выберите подсистему"); return; }
+            if (sys == null) { AppDialog.Info(this, "Серверы", "Сначала выберите систему."); return; }
             string cur = string.Join(Environment.NewLine, sys.Services.ToArray());
             string txt = Prompt.Show("Сервисы для остановки перед reboot", "Маски сервисов (по строке), напр. postgresql* / patroni:", cur, true, new Size(420, 300));
             if (txt == null) return;
@@ -608,18 +683,34 @@ namespace RedOSPackageUpdater
         private void CheckAll(bool val)
         {
             _suppressCheck = true;
-            foreach (TreeNode sys in _tree.Nodes) { sys.Checked = val; foreach (TreeNode n in sys.Nodes) n.Checked = val; }
+            foreach (TreeNode sys in _tree.Nodes)
+            {
+                sys.Checked = val;
+                foreach (TreeNode n in sys.Nodes)
+                {
+                    n.Checked = val;
+                    var node = n.Tag as Node;
+                    if (node != null)
+                    {
+                        if (val) _checkedHosts.Add(node.Host ?? "");
+                        else _checkedHosts.Remove(node.Host ?? "");
+                    }
+                }
+            }
             _suppressCheck = false;
+            RefreshSelectionSummary();
         }
 
         private void EditCredentials()
         {
+            if (!CanEditConfiguration()) return;
             using (var f = new CredentialsForm(_cfg.Credentials))
                 if (f.ShowDialog(this) == DialogResult.OK && f.Result != null)
                 { _cfg.Credentials = f.Result; Store.SaveConfig(_cfg); SetStatus("Учёток в пуле: " + _cfg.Credentials.Count); }
         }
         private void EditSettings()
         {
+            if (!CanEditConfiguration()) return;
             using (var f = new SettingsForm(_cfg.Settings))
                 if (f.ShowDialog(this) == DialogResult.OK && f.Result != null)
                 { _cfg.Settings = f.Result; Store.SaveConfig(_cfg); SetStatus("Настройки сохранены"); }
@@ -632,6 +723,7 @@ namespace RedOSPackageUpdater
         }
         private void EditExclusions()
         {
+            if (!CanEditConfiguration()) return;
             string cur = string.Join(Environment.NewLine, (_cfg.ExcludePackages ?? new List<string>()).ToArray());
             string txt = Prompt.Show("Исключить из обновления", "Маски пакетов (по строке), напр. postgresql* / postgrespro* / pgpro*:", cur, true, new System.Drawing.Size(440, 300));
             if (txt == null) return;
@@ -652,12 +744,13 @@ namespace RedOSPackageUpdater
                 path = sfd.FileName;
             }
             string master = Prompt.Show("Экспорт", "Мастер-пароль для шифрования экспорта:", "", false, new Size(380, 130));
-            if (string.IsNullOrEmpty(master)) { MessageBox.Show("Экспорт отменён: нужен мастер-пароль"); return; }
+            if (string.IsNullOrEmpty(master)) { AppDialog.Info(this, "Экспорт", "Для защищённого экспорта нужен мастер-пароль."); return; }
             try { Store.ExportPortable(path, master, _cfg); SetStatus("Экспортировано: " + path); }
-            catch (Exception ex) { MessageBox.Show("Ошибка экспорта: " + ex.Message); }
+            catch (Exception ex) { AppDialog.Error(this, "Ошибка экспорта", ex.Message); }
         }
         private void DoImport()
         {
+            if (!CanEditConfiguration()) return;
             string path;
             using (var ofd = new OpenFileDialog { Filter = "RPU export (*.rpu)|*.rpu|Все файлы (*.*)|*.*" })
             {
@@ -669,9 +762,7 @@ namespace RedOSPackageUpdater
             try
             {
                 var cfg = Store.ImportPortable(path, master);
-                var choice = MessageBox.Show(
-                    "Импортировать данные?\n\nДа — заменить текущий конфиг целиком\nНет — добавить системы и учётки к текущим\nОтмена — не импортировать",
-                    "Импорт", MessageBoxButtons.YesNoCancel);
+                var choice = AppDialog.ImportChoice(this);
                 if (choice == DialogResult.Cancel) return;
                 if (choice == DialogResult.Yes)
                     _cfg = cfg;
@@ -683,10 +774,17 @@ namespace RedOSPackageUpdater
                 }
                 Store.SaveConfig(_cfg); RebuildTree(); RefreshExcluded(); SetStatus("Импорт выполнен");
             }
-            catch (Exception ex) { MessageBox.Show("Ошибка импорта (неверный мастер-пароль?): " + ex.Message); }
+            catch (Exception ex) { AppDialog.Error(this, "Ошибка импорта", "Проверьте мастер-пароль и файл.\n" + ex.Message); }
         }
 
         // ---------- Сбор целей и запуск ----------
+        private bool CanEditConfiguration()
+        {
+            if (!_running) return true;
+            AppDialog.Info(this, "Операция выполняется", "Изменение конфигурации будет доступно после завершения текущей операции.");
+            return false;
+        }
+
         private List<RunTarget> CollectChecked()
         {
             var list = new List<RunTarget>();
@@ -719,7 +817,7 @@ namespace RedOSPackageUpdater
             // Отключённый узел (серый в дереве) не должен запускаться в обход - раньше правый клик
             // "Запустить этот узел" игнорировал n.Enabled, в отличие от CollectChecked/CollectSystem,
             // которые его учитывают. Молчаливое расхождение поведения между тремя точками входа.
-            if (!n.Enabled) { MessageBox.Show("Узел отключён (Enabled=false) - сначала включите его в свойствах узла"); return list; }
+            if (!n.Enabled) { AppDialog.Info(this, "Узел отключён", "Сначала включите узел в его свойствах."); return list; }
             var sys = (node.Parent != null) ? node.Parent.Tag as SubSystem : null;
             list.Add(new RunTarget(sys, n));
             return list;
@@ -738,35 +836,35 @@ namespace RedOSPackageUpdater
                 else dups++;
             }
             if (dups > 0)
-                MessageBox.Show("Узлов с повторяющимся Host/IP: " + dups + ". Дубли пропущены - иначе на одном сервере запустится несколько параллельных обновлений.", "Повтор адресов");
+                AppDialog.Info(this, "Повтор адресов", "Узлов с повторяющимся Host/IP: " + dups + ". Дубли пропущены, чтобы на одном сервере не запускались параллельные обновления.");
             return outp;
         }
 
         private void RunChecked()
         {
             var t = CollectChecked();
-            if (t.Count == 0) { MessageBox.Show("Отметьте узлы галочками или используйте правый клик по системе/узлу"); return; }
+            if (t.Count == 0) { AppDialog.Info(this, "Нет выбранных серверов", "Отметьте серверы в дереве или выберите цель через контекстное меню."); return; }
             RunTargets(t);
         }
 
         private void PreviewChecked()
         {
             var t = CollectChecked();
-            if (t.Count == 0) { MessageBox.Show("Отметьте узлы галочками или используйте правый клик по системе/узлу"); return; }
+            if (t.Count == 0) { AppDialog.Info(this, "Нет выбранных серверов", "Отметьте серверы в дереве или выберите цель через контекстное меню."); return; }
             RunPreviewTargets(t);
         }
 
         // ---------- Общий каркас операций ----------
         private bool Preflight(List<RunTarget> targets)
         {
-            if (_running) { MessageBox.Show("Операция уже идёт"); return false; }
-            if (_cfg.Credentials.Count == 0) { MessageBox.Show("Пул учёток пуст. Задайте пароли в меню 'Учётки'"); return false; }
+            if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return false; }
+            if (_cfg.Credentials.Count == 0) { AppDialog.Info(this, "Нет учётных записей", "Добавьте учётную запись в разделе «Доступ и SSH»."); return false; }
             if (targets == null || targets.Count == 0)
             {
                 // Вызывающий код из контекстного меню дерева ("Запустить всю систему" на системе без
                 // включённых узлов) раньше полагался только на эту проверку без своего MessageBox -
                 // пункт меню молча "не срабатывал", пользователь не понимал, что произошло.
-                MessageBox.Show("Нет включённых узлов для запуска");
+                AppDialog.Info(this, "Нет доступных серверов", "Для запуска нет включённых серверов.");
                 return false;
             }
             return true;
@@ -826,7 +924,7 @@ namespace RedOSPackageUpdater
                 string host = t.Node.Host ?? "";   // null-ключ уронил бы словарь
                 // system,name,host,st,upd,reb,pre,post,ker,os,note - по одному значению на каждую колонку грида
                 int idx = _summary.Rows.Add(t.System != null ? t.System.Name : "", t.Node.Name, host, "в очереди", "", "", "", "", "", "", "");
-                _rowByHost[host] = idx;
+                _rowByHost[host] = _summary.Rows[idx];
             }
             _selectedHost = null;   // живой лог показывает все узлы, пока не кликнут строку
             // подсказку ставим последней: добавление строк триггерит SelectionChanged и перетирает её
@@ -863,11 +961,11 @@ namespace RedOSPackageUpdater
                     dlg.Font = Theme.UiFont; dlg.BackColor = Theme.Bg; dlg.ForeColor = Theme.Text;
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog; dlg.MaximizeBox = false; dlg.MinimizeBox = false;
                     var label = new Label { Left = 18, Top = 18, Width = 540, Height = 145, Text = text };
-                    var all = new CheckBox { Left = 18, Top = 170, Width = 540, Height = 38,
+                    var all = new ModernCheckBox { Left = 18, Top = 170, Width = 540, Height = 38, BackColor = Theme.Surface,
                         Text = "Доверять всем остальным новым SSH-ключам только в этой операции" };
-                    var yes = new Button { Text = "Доверять и сохранить", Left = 272, Top = 220,
+                    var yes = new ModernButton { Text = "Доверять и сохранить", Left = 272, Top = 220,
                         Width = 170, Height = 30, DialogResult = DialogResult.Yes };
-                    var no = new Button { Text = "Отмена", Left = 450, Top = 220,
+                    var no = new ModernButton { Text = "Отмена", Left = 450, Top = 220,
                         Width = 108, Height = 30, DialogResult = DialogResult.No };
                     Theme.Check(all); Theme.Primary(yes); Theme.Secondary(no);
                     dlg.Controls.Add(label); dlg.Controls.Add(all); dlg.Controls.Add(yes); dlg.Controls.Add(no);
@@ -889,8 +987,8 @@ namespace RedOSPackageUpdater
                 dlg.Width = 760; dlg.Height = 440; dlg.StartPosition = FormStartPosition.CenterParent;
                 dlg.Font = Theme.UiFont; dlg.BackColor = Theme.Bg; dlg.ForeColor = Theme.Text;
 
-                var list = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
-                    MultiSelect = true, HideSelection = false };
+                var list = new ModernListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
+                    MultiSelect = true, HideSelection = false, BackColor = Theme.Surface, ForeColor = Theme.Text, BorderStyle = BorderStyle.None };
                 list.Columns.Add("Сервер", 220);
                 list.Columns.Add("SHA-256 fingerprint", 490);
                 foreach (var kv in known)
@@ -901,15 +999,14 @@ namespace RedOSPackageUpdater
                 }
 
                 var bottom = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(8) };
-                var remove = new Button { Text = "Удалить выбранные", Width = 160, Dock = DockStyle.Left };
-                var close = new Button { Text = "Закрыть", Width = 100, Dock = DockStyle.Right, DialogResult = DialogResult.OK };
+                var remove = new ModernButton { Text = "Удалить выбранные", Width = 160, Dock = DockStyle.Left };
+                var close = new ModernButton { Text = "Закрыть", Width = 100, Dock = DockStyle.Right, DialogResult = DialogResult.OK };
                 remove.Click += (s, e) =>
                 {
                     if (list.SelectedItems.Count == 0) return;
-                    if (MessageBox.Show(dlg,
+                    if (!AppDialog.Confirm(dlg, "Удаление SSH-ключей",
                         "После удаления при следующем подключении потребуется подтвердить новый ключ. Продолжить?",
-                        "Удаление SSH-ключей", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
-                        MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                        "Удалить")) return;
                     var selected = new List<ListViewItem>();
                     foreach (ListViewItem item in list.SelectedItems) selected.Add(item);
                     foreach (var item in selected) { known.Remove(item.Text); list.Items.Remove(item); }
@@ -917,6 +1014,7 @@ namespace RedOSPackageUpdater
                 };
                 bottom.Controls.Add(remove); bottom.Controls.Add(close);
                 dlg.Controls.Add(list); dlg.Controls.Add(bottom);
+                Theme.Dialog(dlg);
                 dlg.AcceptButton = close;
                 dlg.ShowDialog(this);
             }
@@ -981,10 +1079,9 @@ namespace RedOSPackageUpdater
             };
 
             string exclInfo = string.IsNullOrEmpty(opt.ExcludeMasks) ? "(ничего)" : opt.ExcludeMasks;
-            if (MessageBox.Show("Запустить на " + targets.Count + " узлах?\nПрофиль: " + _profile.Text +
+            if (!AppDialog.Confirm(this, "Подтверждение операции", "Запустить на " + targets.Count + " узлах?\nПрофиль: " + _profile.Text +
                 "\nИсключено из обновления: " + exclInfo +
-                (_noReboot.Checked ? "\nБез перезагрузки" : "\nС перезагрузкой при необходимости"), "Подтверждение",
-                MessageBoxButtons.OKCancel) != DialogResult.OK) return;
+                (_noReboot.Checked ? "\nБез перезагрузки" : "\nС перезагрузкой при необходимости"), "Запустить")) return;
 
             Directory.CreateDirectory(opt.RunLogDir);   // создаём только после подтверждения - не плодим пустые папки при отмене
 
@@ -1007,7 +1104,7 @@ namespace RedOSPackageUpdater
         // ---------- Обновление репозитория ----------
         private void OpenRepo()
         {
-            if (_running) { MessageBox.Show("Операция уже идёт"); return; }
+            if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
             string repoHost; List<string> repoScripts;
             using (var f = new RepoDialog(_cfg.RepoHost, _cfg.RepoScripts))
             {
@@ -1020,15 +1117,14 @@ namespace RedOSPackageUpdater
 
         private void RunRepoTargets(string host, List<string> scripts)
         {
-            if (_cfg.Credentials.Count == 0) { MessageBox.Show("Пул учёток пуст. Задайте пароли в меню 'Учётки'"); return; }
+            if (_cfg.Credentials.Count == 0) { AppDialog.Info(this, "Нет учётных записей", "Добавьте учётную запись в разделе «Доступ и SSH»."); return; }
             var node = new Node { Name = "repo (" + host + ")", Host = host, Port = 22, Enabled = true };
             var target = new RunTarget(new SubSystem { Name = "Репозиторий" }, node);
             var targets = new List<RunTarget> { target };
 
             string logDir = NewLogDir("repo_");
 
-            if (MessageBox.Show("Запустить обновление репозитория на " + host + "?\nСкриптов: " + scripts.Count, "Подтверждение",
-                MessageBoxButtons.OKCancel) != DialogResult.OK) return;
+            if (!AppDialog.Confirm(this, "Обновление репозитория", "Запустить обновление репозитория на " + host + "?\nСкриптов: " + scripts.Count, "Запустить")) return;
 
             Directory.CreateDirectory(logDir);   // после подтверждения
 
@@ -1047,16 +1143,15 @@ namespace RedOSPackageUpdater
 
         private void RunVulnerabilityScan()
         {
-            if (_running) { MessageBox.Show("Операция уже выполняется"); return; }
-            if (!VulnerabilityDb.Exists) { MessageBox.Show("Сначала загрузите или импортируйте базу через меню 'Уязвимости ФСТЭК'."); return; }
+            if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
+            if (!VulnerabilityDb.Exists) { AppDialog.Info(this, "Нет базы уязвимостей", "Сначала загрузите или импортируйте базу в разделе «Уязвимости ФСТЭК»."); return; }
             var targets = DedupeByHost(CollectChecked());
-            if (targets.Count == 0) { MessageBox.Show("Отметьте узлы для проверки"); return; }
+            if (targets.Count == 0) { AppDialog.Info(this, "Нет выбранных серверов", "Отметьте серверы для проверки."); return; }
             if (!Preflight(targets)) return;
-            if (MessageBox.Show(this,
+            if (!AppDialog.Confirm(this, "Проверка уязвимостей ФСТЭК",
                 "Проверить " + targets.Count + " узлов по базе БДУ ФСТЭК?\n\n" +
                 "Если Trivy отсутствует, программа установит его из репозитория узла. " +
-                "Серверы не перезагружаются.",
-                "Проверка уязвимостей ФСТЭК", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK) return;
+                "Серверы не перезагружаются.", "Проверить")) return;
 
             string logDir = NewLogDir("vuln_");
             Directory.CreateDirectory(logDir);
@@ -1082,6 +1177,7 @@ namespace RedOSPackageUpdater
                 File.WriteAllText(htmlPath, BuildVulnerabilityHtml(results), new UTF8Encoding(false));
                 _lastReportDir = logDir;
                 AppendLog("Отчёт ФСТЭК: " + output.FstecCsvPath);
+                AppendLog("Подтверждено для версии ОС: " + output.ConfirmedBduCount + "; исключено неподтверждённых/неприменимых совпадений: " + output.RejectedBduCount);
                 AppendLog("Расширенный отчёт: " + output.AllCsvPath);
                 AppendLog("HTML-отчёт: " + htmlPath);
                 if (output.LinuxFindingsAdded > 0) AppendLog("Дополнительная проверка общего продукта Linux: добавлено " + output.LinuxFindingsAdded + " находок по версии работающего ядра");
@@ -1094,7 +1190,7 @@ namespace RedOSPackageUpdater
             int total = 0, critical = 0, high = 0, fixable = 0;
             foreach (var r in results)
                 foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
-                    if (!string.IsNullOrEmpty(v.Id) && v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase))
+                    if (VulnerabilityReportService.IsConfirmedBdu(v))
                     {
                         total++;
                         if (string.Equals(v.Severity, "CRITICAL", StringComparison.OrdinalIgnoreCase)) critical++;
@@ -1102,15 +1198,32 @@ namespace RedOSPackageUpdater
                         if (!string.IsNullOrWhiteSpace(v.FixedVersion)) fixable++;
                     }
 
+            var remediationGroups = results
+                .SelectMany(r => (r.Vulnerabilities ?? new List<VulnerabilityFinding>())
+                    .Where(VulnerabilityReportService.IsConfirmedBdu)
+                    .Select(v => new { Host = r, Finding = v }))
+                .GroupBy(x => new {
+                    Host = x.Host.Host ?? "", Name = x.Host.Name ?? "",
+                    Package = x.Finding.Package ?? "", Installed = x.Finding.InstalledVersion ?? "",
+                    Fixed = x.Finding.FixedVersion ?? ""
+                })
+                .Select(g => new {
+                    Host = g.First().Host, Package = g.Key.Package, Installed = g.Key.Installed,
+                    Fixed = g.Key.Fixed, Findings = g.Select(x => x.Finding).ToList(),
+                    Severity = g.Select(x => x.Finding.Severity ?? "UNKNOWN")
+                        .OrderByDescending(SeverityRank).FirstOrDefault() ?? "UNKNOWN"
+                }).OrderBy(g => g.Host.Name).ThenBy(g => g.Package).ThenBy(g => g.Fixed).ToList();
+
             var h = new StringBuilder(1024 * 64);
             h.Append("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>")
              .Append("<title>Отчёт по уязвимостям ФСТЭК</title><style>")
-             .Append("body{margin:0;background:#e9ebef;color:#1e2127;font:14px 'Segoe UI',Arial,sans-serif}header{background:#fff;border-top:4px solid #2563eb;padding:22px 28px;border-bottom:1px solid #d7dae0}h1{font-size:22px;margin:0 0 5px}.muted{color:#686e78}.wrap{padding:20px 28px}.cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}.card{background:#fff;border:1px solid #d7dae0;padding:14px 18px;min-width:150px}.num{font-size:24px;font-weight:600}.bad{color:#c93a3a}.warn{color:#b57d0b}.good{color:#228b54}.tools{display:flex;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #d7dae0;padding:12px;margin-bottom:12px}input,select{border:1px solid #bcc1ca;padding:8px;background:#fff;min-width:170px}table{width:100%;border-collapse:collapse;background:#fff;font-size:12px}th{position:sticky;top:0;background:#f0f1f5;color:#686e78;text-align:left;padding:9px;border-bottom:1px solid #d7dae0}td{padding:8px 9px;border-bottom:1px solid #e0e3e9;vertical-align:top}tr:hover{background:#eef4ff}.sev-CRITICAL,.sev-HIGH{color:#c93a3a;font-weight:600}.sev-MEDIUM{color:#b57d0b}.tag{padding:2px 6px;background:#ebf2ff;color:#1d4ed8;white-space:nowrap}a{color:#2563eb;text-decoration:none}.hidden{display:none}.hostsum{margin-bottom:18px}</style></head><body>")
+             .Append(":root{color-scheme:light;--bg:#f4f6f9;--surface:#fff;--text:#1b2433;--muted:#657082;--line:#dadee7;--head:#f7f8fa;--accent:#265bcf;--tint:#ebf2ff;--bad:#c93a3a;--warn:#b57d0b;--good:#228b54}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px 'Segoe UI',Arial,sans-serif}header{background:var(--surface);border-top:4px solid var(--accent);padding:24px clamp(18px,4vw,48px);border-bottom:1px solid var(--line)}h1{font-size:24px;letter-spacing:-.3px;margin:0 0 6px}.muted{color:var(--muted)}.wrap{padding:22px clamp(14px,4vw,48px);max-width:1800px;margin:auto}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}.card,.tools,table{background:var(--surface);border:1px solid var(--line);box-shadow:0 2px 8px rgba(27,36,51,.04)}.card{padding:15px 18px;min-width:150px;border-radius:9px}.num{font-size:25px;font-weight:650;letter-spacing:-.5px}.bad{color:var(--bad)}.warn{color:var(--warn)}.good{color:var(--good)}.tools{display:flex;gap:10px;flex-wrap:wrap;padding:12px;margin-bottom:12px;border-radius:9px;align-items:center}input,select{border:1px solid #bcc4d1;border-radius:7px;padding:9px 11px;background:#fff;color:var(--text);min-width:180px;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(38,91,207,.12)}table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;border-radius:9px;overflow:hidden}th{position:sticky;top:0;background:var(--head);color:var(--muted);text-align:left;padding:10px;border-bottom:1px solid var(--line);z-index:1}td{padding:9px 10px;border-bottom:1px solid #e8ebf0;vertical-align:top}tbody tr:last-child td{border-bottom:0}tr:hover{background:#f2f6ff}.sev-CRITICAL,.sev-HIGH{color:var(--bad);font-weight:650}.sev-MEDIUM{color:var(--warn)}.tag{display:inline-block;padding:2px 7px;border-radius:5px;background:var(--tint);color:#1d4ed8;white-space:nowrap}a{color:var(--accent);text-decoration:none;font-weight:600}a:hover{text-decoration:underline}.hidden{display:none}.hostsum{margin-bottom:18px}details summary{cursor:pointer;color:var(--accent);font-weight:650;user-select:none}.vulns{margin-top:9px;display:grid;gap:8px}.vuln{padding:8px 10px;border-left:3px solid var(--line);background:var(--head);border-radius:0 6px 6px 0}.vuln-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.vuln-title{margin-top:3px;color:var(--text)}@media(max-width:760px){.wrap{padding:14px}.tools>*{width:100%}table{display:block;overflow-x:auto;white-space:nowrap}}</style></head><body>")
              .Append("<header><h1>Отчёт по уязвимостям БДУ ФСТЭК</h1><div class='muted'>Сформирован ").Append(H(DateTime.Now.ToString("dd.MM.yyyy HH:mm"))).Append("</div></header><div class='wrap'>")
              .Append("<div class='cards'><div class='card'><div class='num'>").Append(total).Append("</div><div class='muted'>записей БДУ</div></div>")
              .Append("<div class='card'><div class='num bad'>").Append(critical).Append("</div><div class='muted'>критических</div></div>")
              .Append("<div class='card'><div class='num warn'>").Append(high).Append("</div><div class='muted'>высоких</div></div>")
-             .Append("<div class='card'><div class='num good'>").Append(fixable).Append("</div><div class='muted'>с исправлением</div></div>")
+             .Append("<div class='card'><div class='num good'>").Append(remediationGroups.Count(g => !string.IsNullOrWhiteSpace(g.Fixed))).Append("</div><div class='muted'>действий обновления</div></div>")
+             .Append("<div class='card'><div class='num'>").Append(remediationGroups.Count).Append("</div><div class='muted'>групп исправления</div></div>")
              .Append("<div class='card'><div class='num'>").Append(results.Count).Append("</div><div class='muted'>серверов</div></div></div>")
              .Append("<table class='hostsum'><thead><tr><th>Сервер</th><th>Узел</th><th>Статус</th><th>Результат</th></tr></thead><tbody>");
             foreach (var r in results)
@@ -1123,20 +1236,32 @@ namespace RedOSPackageUpdater
                     hosts.Add(r.Host ?? "");
                     h.Append("<option value='").Append(H(r.Host)).Append("'>").Append(H(NodeLabel(r.Name, r.Host))).Append("</option>");
                 }
-            h.Append("</select><span class='muted' id='shown'></span></div><table id='v'><thead><tr><th>Сервер</th><th>БДУ / CVE</th><th>Пакет</th><th>Установлено</th><th>Исправление</th><th>Критичность</th><th>Опубликована</th><th>Изменена</th><th>Описание</th></tr></thead><tbody>");
-            foreach (var r in results)
-                foreach (var v in r.Vulnerabilities ?? new List<VulnerabilityFinding>())
+            h.Append("</select><span class='muted' id='shown'></span></div><table id='v'><thead><tr><th>Сервер</th><th>Пакет</th><th>Установлено</th><th>Обновить до</th><th>Макс. критичность</th><th>Закрываемые уязвимости</th></tr></thead><tbody>");
+            foreach (var group in remediationGroups)
+            {
+                bool hasFix = !string.IsNullOrWhiteSpace(group.Fixed);
+                h.Append("<tr data-sev='").Append(H(group.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(group.Host.Host)).Append("'><td>").Append(H(NodeLabel(group.Host.Name, group.Host.Host))).Append("</td><td><strong>").Append(H(group.Package)).Append("</strong></td><td>").Append(H(group.Installed)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(group.Fixed) + "</span>" : "—").Append("</td><td class='sev-").Append(H(group.Severity)).Append("'>").Append(H(group.Severity)).Append("</td><td><details><summary>").Append(group.Findings.Count).Append(" ").Append(group.Findings.Count == 1 ? "уязвимость" : "уязвимостей").Append("</summary><div class='vulns'>");
+                foreach (var v in group.Findings.OrderByDescending(x => SeverityRank(x.Severity)).ThenBy(x => x.Id))
                 {
-                    if (string.IsNullOrEmpty(v.Id) || !v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase)) continue;
                     var cves = VulnerabilityReportService.RelatedCves(v);
-                    string url = VulnerabilityReportService.PrimaryUrl(v);
-                    bool hasFix = !string.IsNullOrWhiteSpace(v.FixedVersion);
-                    h.Append("<tr data-sev='").Append(H(v.Severity)).Append("' data-fix='").Append(hasFix ? "yes" : "no").Append("' data-host='").Append(H(r.Host)).Append("'><td>").Append(H(NodeLabel(r.Name, r.Host))).Append("</td><td><a href='").Append(H(url)).Append("'>").Append(H(v.Id)).Append("</a><br><span class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</span></td><td>").Append(H(v.Package)).Append("</td><td>").Append(H(v.InstalledVersion)).Append("</td><td>").Append(hasFix ? "<span class='tag'>" + H(v.FixedVersion) + "</span>" : "—").Append("</td><td class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</td><td>").Append(H(v.PublishedDate)).Append("</td><td>").Append(H(v.LastModifiedDate)).Append("</td><td>")
-                     .Append(string.Equals(v.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ? "<span class='tag'>Общий продукт Linux</span><br>Диапазон ФСТЭК: " + H(v.AffectedRange) + "<br>" : "")
-                     .Append(H(v.Title)).Append("</td></tr>");
+                    h.Append("<div class='vuln'><div class='vuln-head'><a href='").Append(H(VulnerabilityReportService.PrimaryUrl(v))).Append("'>").Append(H(v.Id)).Append("</a><span class='sev-").Append(H(v.Severity)).Append("'>").Append(H(v.Severity)).Append("</span><span class='muted'>").Append(H(v.PublishedDate)).Append("</span></div><div class='muted'>").Append(H(string.Join(", ", cves.ToArray()))).Append("</div><div class='vuln-title'>").Append(H(v.Title)).Append("</div></div>");
                 }
-            h.Append("</tbody></table></div><script>const q=document.getElementById('q'),s=document.getElementById('sev'),f=document.getElementById('fix'),ho=document.getElementById('host'),rows=[...document.querySelectorAll('#v tbody tr')],shown=document.getElementById('shown');function run(){let n=0,Q=q.value.toLowerCase();rows.forEach(r=>{let ok=(!Q||r.innerText.toLowerCase().includes(Q))&&(!s.value||r.dataset.sev==s.value)&&(!f.value||r.dataset.fix==f.value)&&(!ho.value||r.dataset.host==ho.value);r.classList.toggle('hidden',!ok);if(ok)n++});shown.textContent='Показано: '+n} [q,s,f,ho].forEach(x=>x.addEventListener(x.tagName=='INPUT'?'input':'change',run));run();</script></body></html>");
+                h.Append("</div></details></td></tr>");
+            }
+            h.Append("</tbody></table></div><script>const q=document.getElementById('q'),s=document.getElementById('sev'),f=document.getElementById('fix'),ho=document.getElementById('host'),rows=[...document.querySelectorAll('#v tbody tr')],shown=document.getElementById('shown');function run(){let n=0,Q=q.value.toLowerCase();rows.forEach(r=>{let ok=(!Q||r.innerText.toLowerCase().includes(Q))&&(!s.value||r.dataset.sev==s.value)&&(!f.value||r.dataset.fix==f.value)&&(!ho.value||r.dataset.host==ho.value);r.classList.toggle('hidden',!ok);if(ok)n++});shown.textContent='Показано групп: '+n} [q,s,f,ho].forEach(x=>x.addEventListener(x.tagName=='INPUT'?'input':'change',run));run();</script></body></html>");
             return h.ToString();
+        }
+
+        private static int SeverityRank(string severity)
+        {
+            switch ((severity ?? "").ToUpperInvariant())
+            {
+                case "CRITICAL": return 5;
+                case "HIGH": return 4;
+                case "MEDIUM": return 3;
+                case "LOW": return 2;
+                default: return 1;
+            }
         }
 
         private static string H(string value)
@@ -1151,7 +1276,7 @@ namespace RedOSPackageUpdater
 
         private void UpdateVulnerabilityDb()
         {
-            if (_running) { MessageBox.Show("Дождитесь завершения текущей операции"); return; }
+            if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
             ShowVulnerabilityDbProgress();
             StartOperation("Загрузка базы ФСТЭК...", token =>
             {
@@ -1161,9 +1286,9 @@ namespace RedOSPackageUpdater
                     {
                         Ui(() => UpdateVulnerabilityDbProgress(progress.Percent,
                             progress.Done / (1024 * 1024), progress.Total > 0 ? progress.Total / (1024 * 1024) : 0,
-                            progress.Stage == VulnerabilityDatabaseStage.TrivyDatabase ? "База Trivy/БДУ" : "Каталог Linux ФСТЭК"));
+                            progress.Stage == VulnerabilityDatabaseStage.TrivyDatabase ? "База Trivy/БДУ" : "Каталог применимости ФСТЭК"));
                     }, token);
-                    Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей и каталог общего продукта Linux успешно обновлены."); });
+                    Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей и каталог применимости к версиям RED OS успешно обновлены."); });
                 }
                 catch (OperationCanceledException) { Ui(() => SetStatus("Загрузка базы ФСТЭК отменена")); }
                 catch (Exception ex) { Ui(() => { SetStatus("Ошибка загрузки базы ФСТЭК"); AppDialog.Error(this, "ФСТЭК", "Не удалось обновить базу:\n" + ex.Message); }); }
@@ -1206,7 +1331,7 @@ namespace RedOSPackageUpdater
 
         private void ImportVulnerabilityDb()
         {
-            if (_running) { MessageBox.Show("Дождитесь завершения текущей операции"); return; }
+            if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
             using (var d = new OpenFileDialog { Title = "Архив базы Trivy или официальная XML-выгрузка ФСТЭК", Filter = "Базы ФСТЭК|*.tar.gz;*.tgz;*.zip|Все файлы|*.*" })
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
@@ -1223,7 +1348,6 @@ namespace RedOSPackageUpdater
         {
             string status = VulnerabilityDb.StatusText();
             SetStatus(status);
-            if (_vulnStatusMenu != null) _vulnStatusMenu.Text = status;
         }
 
         // ---------- Установка/обновление произвольных пакетов (режим "пакеты" в списке профиля) ----------
@@ -1238,7 +1362,7 @@ namespace RedOSPackageUpdater
             string packages = PkgListFromBox();
             if (packages == null)
             {
-                if (!listOnly) { MessageBox.Show("Впишите пакеты в поле сверху (через пробел или по строке)"); return; }
+                if (!listOnly) { AppDialog.Info(this, "Не указаны пакеты", "Введите пакеты в поле сценария — через пробел или по одному на строку."); return; }
                 packages = "";   // для просмотра список необязателен (пусто = все закреплённые)
             }
             string actRu = ActionRu(action);
@@ -1254,9 +1378,8 @@ namespace RedOSPackageUpdater
                     warn = "\n\nЗакрепление версий будет снято: пакеты снова начнут обновляться.";
                 else
                     warn = "\n\nReboot не выполняется (только сообщение, если нужен).";
-                if (MessageBox.Show(this, actRu + " на " + targets.Count + " узлах:\n" + packages + warn + "\n\nВыполнить?",
-                    "Подтверждение", MessageBoxButtons.OKCancel,
-                    action == "remove" ? MessageBoxIcon.Warning : MessageBoxIcon.Question) != DialogResult.OK) return;
+                if (!AppDialog.Confirm(this, "Подтверждение операции", actRu + " на " + targets.Count + " узлах:\n" + packages + warn + "\n\nВыполнить?",
+                    action == "remove" ? "Удалить" : "Выполнить")) return;
             }
 
             string prefix = dryRun ? "pkgpreview_" : "pkgop_";
@@ -1371,16 +1494,17 @@ namespace RedOSPackageUpdater
             {
                 try { f.Icon = this.Icon; } catch { }
                 f.Controls.Add(new Label { Text = "Что открыть?", Left = 12, Top = 14, Width = 348 });
-                var bHtml = new Button { Text = "HTML", Left = 12, Top = 42, Width = 84, Height = 28, Enabled = html != null };
-                var bXls = new Button { Text = "Excel", Left = 102, Top = 42, Width = 84, Height = 28, Enabled = xls != null };
-                var bBoth = new Button { Text = "Оба", Left = 192, Top = 42, Width = 76, Height = 28, Enabled = html != null && xls != null };
-                var bDir = new Button { Text = "Папка", Left = 274, Top = 42, Width = 86, Height = 28 };
-                var bCancel = new Button { Text = "Закрыть", Left = 274, Top = 78, Width = 86, Height = 26, DialogResult = DialogResult.Cancel };
+                var bHtml = new ModernButton { Text = "HTML", Left = 12, Top = 42, Width = 84, Height = 30, Enabled = html != null };
+                var bXls = new ModernButton { Text = "Excel", Left = 102, Top = 42, Width = 84, Height = 30, Enabled = xls != null };
+                var bBoth = new ModernButton { Text = "Оба", Left = 192, Top = 42, Width = 76, Height = 30, Enabled = html != null && xls != null };
+                var bDir = new ModernButton { Text = "Папка", Left = 274, Top = 42, Width = 86, Height = 30 };
+                var bCancel = new ModernButton { Text = "Закрыть", Left = 274, Top = 78, Width = 86, Height = 30, DialogResult = DialogResult.Cancel };
                 bHtml.Click += (s, e) => { OpenPath(html); f.Close(); };
                 bXls.Click += (s, e) => { OpenPath(xls); f.Close(); };
                 bBoth.Click += (s, e) => { OpenPath(html); OpenPath(xls); f.Close(); };
                 bDir.Click += (s, e) => { OpenReportsFolder(); f.Close(); };
                 f.Controls.AddRange(new Control[] { bHtml, bXls, bBoth, bDir, bCancel });
+                Theme.Dialog(f);
                 f.CancelButton = bCancel;
                 f.ShowDialog(this);
             }
@@ -1391,19 +1515,18 @@ namespace RedOSPackageUpdater
         {
             string dir = (!string.IsNullOrEmpty(_lastReportDir) && Directory.Exists(_lastReportDir)) ? _lastReportDir : Store.LogsDir;
             try { Directory.CreateDirectory(dir); Process.Start(dir); }
-            catch (Exception ex) { MessageBox.Show("Не удалось открыть папку: " + ex.Message); }
+            catch (Exception ex) { AppDialog.Error(this, "Не удалось открыть папку", ex.Message); }
         }
 
         private void UpdatePreviewRow(HostPreview hp)
         {
-            int idx;
-            if (!_rowByHost.TryGetValue(hp.Host ?? "", out idx)) return;
-            var row = _summary.Rows[idx];
+            DataGridViewRow row;
+            if (!_rowByHost.TryGetValue(hp.Host ?? "", out row)) return;
             if (!string.IsNullOrEmpty(hp.OsInfo)) row.Cells[Col.Os].Value = hp.OsInfo;
             if (!string.IsNullOrEmpty(hp.Error))
             {
                 row.Cells[Col.St].Value = "ошибка"; row.Cells[Col.Note].Value = hp.Error;
-                row.DefaultCellStyle.BackColor = Color.FromArgb(255, 220, 220);
+                row.DefaultCellStyle.BackColor = Theme.IsDark ? Color.FromArgb(72, 38, 45) : Color.FromArgb(253, 232, 234);
             }
             else
             {
@@ -1411,7 +1534,9 @@ namespace RedOSPackageUpdater
                 row.Cells[Col.Upd].Value = "adv " + hp.Sec + " / завис " + hp.Dep;
                 row.Cells[Col.Note].Value = hp.Total > 0 ? ("исключено маской: " + hp.Excluded) : "обновлять нечего (исключено: " + hp.Excluded + ")";
                 // зелёный - есть что ставить; голубой - проверено, апдейтов нет (не путать с "не отработало")
-                row.DefaultCellStyle.BackColor = hp.Total > 0 ? Color.FromArgb(220, 240, 220) : Color.FromArgb(219, 234, 246);
+                row.DefaultCellStyle.BackColor = hp.Total > 0
+                    ? (Theme.IsDark ? Color.FromArgb(28, 66, 49) : Color.FromArgb(229, 247, 237))
+                    : Theme.AccentTint;
             }
         }
 
@@ -1431,9 +1556,8 @@ namespace RedOSPackageUpdater
 
         private void UpdateRow(HostResult r, bool starting)
         {
-            int idx;
-            if (!_rowByHost.TryGetValue(r.Host ?? "", out idx)) return;
-            var row = _summary.Rows[idx];
+            DataGridViewRow row;
+            if (!_rowByHost.TryGetValue(r.Host ?? "", out row)) return;
             row.Cells[Col.St].Value = starting ? "идёт..." : StatusText(r.Status);
             if (!string.IsNullOrEmpty(r.OsInfo)) row.Cells[Col.Os].Value = r.OsInfo;
             if (!starting)
@@ -1445,30 +1569,29 @@ namespace RedOSPackageUpdater
                 row.Cells[Col.Ker].Value = r.RunningKernel;
                 row.Cells[Col.Note].Value = r.Note;
                 row.Tag = r.LogFile;
-                Color bg = r.Status == HostStatus.Ok ? Color.FromArgb(220, 245, 220)
-                        : r.Status == HostStatus.Warn ? Color.FromArgb(255, 245, 205)
-                        : Color.FromArgb(255, 220, 220);
+                Color bg = r.Status == HostStatus.Ok ? (Theme.IsDark ? Color.FromArgb(28, 66, 49) : Color.FromArgb(229, 247, 237))
+                        : r.Status == HostStatus.Warn ? (Theme.IsDark ? Color.FromArgb(70, 56, 29) : Color.FromArgb(255, 247, 220))
+                        : (Theme.IsDark ? Color.FromArgb(72, 38, 45) : Color.FromArgb(253, 232, 234));
                 row.DefaultCellStyle.BackColor = bg;
             }
-            else row.DefaultCellStyle.BackColor = Color.FromArgb(225, 235, 255);
+            else row.DefaultCellStyle.BackColor = Theme.AccentTint;
         }
 
         private void SetRowPhase(string host, string phase)
         {
-            int idx;
-            if (!_rowByHost.TryGetValue(host ?? "", out idx)) return;
-            var row = _summary.Rows[idx];
+            DataGridViewRow row;
+            if (!_rowByHost.TryGetValue(host ?? "", out row)) return;
             string txt; Color bg;
             switch (phase)
             {
-                case "update": txt = "обновление..."; bg = Color.FromArgb(225, 235, 255); break;
-                case "preview": txt = "предпроверка..."; bg = Color.FromArgb(225, 235, 255); break;
-                case "prestop": txt = "стоп служб..."; bg = Color.FromArgb(230, 225, 255); break;
-                case "reboot": txt = "перезагрузка..."; bg = Color.FromArgb(255, 220, 150); break;
-                case "postcheck": txt = "проверка..."; bg = Color.FromArgb(200, 235, 255); break;
-                case "scan": txt = "сканирование..."; bg = Color.FromArgb(220, 232, 255); break;
-                case "repo": txt = "reposync..."; bg = Color.FromArgb(210, 245, 240); break;
-                default: txt = "идёт..."; bg = Color.FromArgb(225, 235, 255); break;
+                case "update": txt = "обновление..."; bg = Theme.AccentTint; break;
+                case "preview": txt = "предпроверка..."; bg = Theme.AccentTint; break;
+                case "prestop": txt = "стоп служб..."; bg = Theme.IsDark ? Color.FromArgb(52, 42, 78) : Color.FromArgb(239, 234, 255); break;
+                case "reboot": txt = "перезагрузка..."; bg = Theme.IsDark ? Color.FromArgb(74, 55, 27) : Color.FromArgb(255, 238, 202); break;
+                case "postcheck": txt = "проверка..."; bg = Theme.IsDark ? Color.FromArgb(28, 61, 75) : Color.FromArgb(226, 245, 252); break;
+                case "scan": txt = "сканирование..."; bg = Theme.AccentTint; break;
+                case "repo": txt = "reposync..."; bg = Theme.IsDark ? Color.FromArgb(27, 65, 57) : Color.FromArgb(225, 247, 241); break;
+                default: txt = "идёт..."; bg = Theme.AccentTint; break;
             }
             row.Cells[Col.St].Value = txt;
             row.DefaultCellStyle.BackColor = bg;
@@ -1559,9 +1682,9 @@ namespace RedOSPackageUpdater
         // Счётчик пакетов reposync в статус-строке (закачано/всего).
         private void SetRepoCount(string host, int done, int total)
         {
-            int idx;
-            if (_rowByHost.TryGetValue(host ?? "", out idx))
-                _summary.Rows[idx].Cells[Col.Upd].Value = "пакеты " + done + "/" + total;
+            DataGridViewRow row;
+            if (_rowByHost.TryGetValue(host ?? "", out row))
+                row.Cells[Col.Upd].Value = "пакеты " + done + "/" + total;
             int pct = total > 0 ? (int)(100.0 * done / total) : 0;
             SetStatus("reposync: пакеты " + done + "/" + total + " (" + pct + "%)");
         }
@@ -1618,7 +1741,14 @@ namespace RedOSPackageUpdater
             if (_log.TextLength > 400000) _log.Text = _log.Text.Substring(_log.TextLength - 200000);
             _log.AppendText(line + "\r\n");
         }
-        private void SetStatus(string s) { _status.SetStatus(s ?? "", ClassifyStatus(s)); }
+        private void SetStatus(string s)
+        {
+            _status.SetStatus(s ?? "", ClassifyStatus(s));
+            string value = (s ?? "").ToLowerInvariant();
+            if (!_running && (value.Contains("сохран") || value.Contains("обновлен") || value.Contains("очищен") ||
+                value.Contains("импорт выполнен") || value.Contains("экспортирован") || value.Contains("добавлено")))
+                ModernToast.Show(this, s, ToastKind.Success);
+        }
 
         // Определяем цвет статус-чипа по тексту сообщения (сами сообщения не переписываем - их формируют
         // десятки мест в коде). Не находит категорию - остаётся нейтральным (Idle).
@@ -1675,13 +1805,11 @@ namespace RedOSPackageUpdater
             _profile.Enabled = !running; _noReboot.Enabled = !running;
             if (_pkgBox != null) _pkgBox.Enabled = !running;
             // на время прогона блокируем правку конфига и дерева
-            if (_menu != null) _menu.Enabled = !running;
             if (_leftPanel != null) _leftPanel.Enabled = !running;
-            // _excluded - кликабельный ярлык "Исключено из обновления: ..." прямо на верхней панели,
-            // тот же диалог, что и пункт меню "Исключения" (который уже блокируется через _menu выше).
-            // Раньше его забыли добавить сюда - во время прогона можно было открыть диалог исключений
-            // и поменять маски, создавая ложное ощущение, что изменение подействует на уже идущий прогон
-            // (на самом деле маски уже зафиксированы в RunOptions.ExcludeMasks на момент старта).
+            _configurationControls.RemoveAll(control => control == null || control.IsDisposed);
+            foreach (Control control in _configurationControls)
+                if (control != null && !control.IsDisposed) control.Enabled = !running;
+            // Исключения фиксируются в RunOptions при старте, поэтому во время операции их не меняем.
             if (_excluded != null) _excluded.Enabled = !running;
         }
 
@@ -1693,6 +1821,7 @@ namespace RedOSPackageUpdater
             if (disposing)
             {
                 if (_tips != null) _tips.Dispose();
+                if (_nodeActionsMenu != null) _nodeActionsMenu.Dispose();
                 if (_cts != null) _cts.Dispose();
             }
             base.Dispose(disposing);
@@ -1702,7 +1831,7 @@ namespace RedOSPackageUpdater
         {
             if (_running)
             {
-                if (!_closeAfterOperation && MessageBox.Show("Идёт выполнение. Прервать и выйти?", "Выход", MessageBoxButtons.YesNo) == DialogResult.No)
+                if (!_closeAfterOperation && !AppDialog.Confirm(this, "Завершение работы", "Сейчас выполняется операция. Остановить её и закрыть приложение?", "Остановить и выйти"))
                 { e.Cancel = true; return; }
                 _closeAfterOperation = true;
                 if (_cts != null) _cts.Cancel();

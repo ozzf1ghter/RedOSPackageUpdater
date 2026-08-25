@@ -55,6 +55,16 @@ internal static class ParserTests
         string matched;
         Check(FstecLinuxCatalog.Applies("6.1.175", new[] { "до 6.1.180" }, out matched), "диапазон общего продукта Linux");
         Check(!FstecLinuxCatalog.Applies("5.15.10", new[] { "до 6.1.180" }, out matched), "ветки ядра не смешиваются");
+        Check(FstecLinuxCatalog.RedOsVersion("RED OS MUROM (7.3) (6.1.175-1.el7.3.x86_64)") == "7.3", "версия RED OS извлекается из сведений узла");
+        Check(FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.3", "8.0" }), "карточка БДУ применима к RED OS 7.3");
+        Check(FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.3 МУРОМ" }), "вариант названия RED OS 7.3 распознаётся");
+        Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.1 МУРОМ", "7.2 Муром" }), "старые выпуски RED OS не смешиваются с 7.3");
+        Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "8.0" }), "карточка только для RED OS 8.0 не применяется к 7.3");
+        Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new string[0]), "отсутствие RED OS в карточке не считается применимостью");
+        Check(FstecLinuxCatalog.IsKernelPackage("kernel-lt") && FstecLinuxCatalog.IsKernelPackage("kernel-core") &&
+            !FstecLinuxCatalog.IsKernelPackage("kernelshark"), "пакеты ядра распознаются без ложных совпадений");
+        Check(FstecLinuxCatalog.IsActiveKernelVersion("6.1.175-1.el7.3", "6.1.175") &&
+            !FstecLinuxCatalog.IsActiveKernelVersion("6.1.162-1.el7.3", "6.1.175"), "резервные ядра отделяются от работающего");
 
         var brokenConfig = new AppConfig
         {
@@ -65,6 +75,10 @@ internal static class ParserTests
         ConfigurationRules.Normalize(brokenConfig);
         Check(brokenConfig.Settings.MaxParallel == 100 && brokenConfig.Settings.ConnectTimeoutSec == 15, "границы настроек конфигурации");
         Check(brokenConfig.Systems.Count == 1 && brokenConfig.Systems[0].Nodes.Count == 1 && brokenConfig.Systems[0].Nodes[0].Host == "host" && brokenConfig.Systems[0].Nodes[0].Port == 22, "нормализация узлов конфигурации");
+        Check(brokenConfig.UiTheme == "light", "неизвестная тема заменяется светлой");
+        brokenConfig.UiTheme = "DARK";
+        ConfigurationRules.Normalize(brokenConfig);
+        Check(brokenConfig.UiTheme == "DARK", "тёмная тема принимается без учёта регистра");
 
         var candidates = CredentialCandidates.Build(new[] {
             new Credential { User = "root", Password = null },
@@ -82,6 +96,12 @@ internal static class ParserTests
         reportFinding.Aliases.Add("cve-2026-5");
         reportFinding.References.Add("https://example/CVE-2026-5/CVE-2026-6");
         Check(VulnerabilityReportService.RelatedCves(reportFinding).Count == 2, "CVE отчёта объединяются без дублей");
+        reportFinding.DetectionKind = "REDOS_UNVERIFIED";
+        Check(!VulnerabilityReportService.IsConfirmedBdu(reportFinding), "непроверенное совпадение БДУ не считается подтверждённым");
+        reportFinding.DetectionKind = "REDOS_CONFIRMED";
+        Check(VulnerabilityReportService.IsConfirmedBdu(reportFinding), "подтверждённая для RED OS БДУ попадает в отчёт ФСТЭК");
+        reportFinding.DetectionKind = "INACTIVE_KERNEL";
+        Check(!VulnerabilityReportService.IsConfirmedBdu(reportFinding), "уязвимость резервного ядра не считается активной");
         Check(VulnerabilityReportService.Csv("a;\"b\"") == "\"a;\"\"b\"\"\"", "CSV корректно экранирует разделители и кавычки");
 
         string secret = Crypto.EncryptPortable("данные", "достаточно-длинный-пароль");
@@ -93,6 +113,19 @@ internal static class ParserTests
         Check(tamperRejected, "изменённый экспорт отклоняется");
         Check(UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "bb", "aa"), "обновлённая сборка той же версии обнаруживается по SHA-256");
         Check(!UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "AA", "aa"), "та же сборка повторно не скачивается");
+        foreach (int width in new[] { 720, 766, 929, 930, 1100 })
+        {
+            CommandBarLayout command = UiLayoutRules.CommandBar(width, 158);
+            Check(command.PreviewLeft >= 310 && command.RunLeft > command.PreviewLeft && command.StopLeft > command.RunLeft,
+                "панель действий не перекрывает выбор сценария при ширине " + width);
+        }
+        foreach (int width in new[] { 500, 766, 900, 1200 })
+        {
+            ServerWorkspaceLayout workspace = UiLayoutRules.ServerWorkspace(width, 8);
+            Check(workspace.SplitterDistance >= workspace.LeftMinimum &&
+                  width - workspace.SplitterDistance - 8 >= workspace.RightMinimum,
+                "панели серверов допустимы при ширине " + width);
+        }
         return _failed == 0 ? 0 : 1;
     }
 }

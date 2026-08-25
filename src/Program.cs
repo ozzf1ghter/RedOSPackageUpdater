@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Net;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 
 namespace RedOSPackageUpdater
 {
@@ -12,6 +13,7 @@ namespace RedOSPackageUpdater
         [STAThread]
         static void Main()
         {
+            DpiAwareness.Enable();
             // .NET Framework 4.6.2 на старых Windows по умолчанию может выбирать TLS 1.0.
             // GitHub принимает только современный TLS, поэтому задаём TLS 1.2 до первого запроса.
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
@@ -81,6 +83,17 @@ namespace RedOSPackageUpdater
                 }
             }
             return null;
+        }
+    }
+
+    internal static class DpiAwareness
+    {
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+        [DllImport("shcore.dll")] private static extern int SetProcessDpiAwareness(int value);
+        public static void Enable()
+        {
+            try { if (SetProcessDpiAwarenessContext(new IntPtr(-4))) return; } catch { }
+            try { SetProcessDpiAwareness(2); } catch { }
         }
     }
 }

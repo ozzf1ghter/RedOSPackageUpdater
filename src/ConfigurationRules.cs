@@ -27,6 +27,7 @@ namespace RedOSPackageUpdater
             if (string.IsNullOrWhiteSpace(config.RepoHost)) config.RepoHost = AppConfig.DefaultRepoHost;
             else config.RepoHost = config.RepoHost.Trim();
             if (config.RepoScripts == null || config.RepoScripts.Count == 0) config.RepoScripts = AppConfig.DefaultRepoScripts();
+            if (!string.Equals(config.UiTheme, "dark", StringComparison.OrdinalIgnoreCase)) config.UiTheme = "light";
 
             config.Credentials.RemoveAll(c => c == null);
             config.Systems.RemoveAll(s => s == null);

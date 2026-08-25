@@ -20,30 +20,93 @@ namespace RedOSPackageUpdater
 
         public static bool Confirm(IWin32Window owner, string title, string message, string okText)
         {
+            string actionText = string.IsNullOrEmpty(okText) ? "Продолжить" : okText;
+            int actionWidth = Math.Max(100, Math.Min(180, TextRenderer.MeasureText(actionText, Theme.UiFontBold).Width + 28));
             using (var f = new Form
             {
                 Text = title, FormBorderStyle = FormBorderStyle.FixedDialog,
                 StartPosition = FormStartPosition.CenterParent, MinimizeBox = false,
-                MaximizeBox = false, ShowInTaskbar = false, ClientSize = new Size(430, 158),
-                BackColor = Theme.Surface, ForeColor = Theme.Text, Font = Theme.UiFont
+                MaximizeBox = false, ShowInTaskbar = false, ClientSize = new Size(540, 220),
+                BackColor = Theme.Surface, ForeColor = Theme.Text, Font = Theme.UiFont,
+                AutoScaleMode = AutoScaleMode.Dpi
             })
             {
                 var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
-                var text = new Label { Left = 24, Top = 18, Width = 382, Height = 76, Text = message ?? "", AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
-                var footer = new Panel { Dock = DockStyle.Bottom, Height = 50, BackColor = Theme.HeaderBg };
+                var text = new Label { Left = 24, Top = 18, Width = 492, Height = 138, Text = message ?? "", AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
+                var footer = new Panel { Dock = DockStyle.Bottom, Height = 54, BackColor = Theme.HeaderBg };
                 Theme.EdgeLine(footer, DockStyle.Top);
-                var cancel = new Button { Text = "Отмена", Width = 92, Height = 28, Left = 214, Top = 11, DialogResult = DialogResult.Cancel };
-                var ok = new Button { Text = string.IsNullOrEmpty(okText) ? "Продолжить" : okText, Width = 100, Height = 28, Left = 312, Top = 11, DialogResult = DialogResult.OK };
+                var ok = new ModernButton { Text = actionText, Width = actionWidth, Height = 32, Left = 528 - actionWidth, Top = 11, DialogResult = DialogResult.OK };
+                var cancel = new ModernButton { Text = "Отмена", Width = 92, Height = 32, Left = ok.Left - 102, Top = 11, DialogResult = DialogResult.Cancel };
                 Theme.Secondary(cancel); Theme.Primary(ok);
                 footer.Controls.Add(cancel); footer.Controls.Add(ok);
                 f.Controls.Add(stripe); f.Controls.Add(text); f.Controls.Add(footer);
                 f.AcceptButton = ok; f.CancelButton = cancel;
+                Theme.AnimateDialog(f);
                 return f.ShowDialog(owner) == DialogResult.OK;
+            }
+        }
+
+        public static bool About(IWin32Window owner, string version)
+        {
+            using (var f = new Form
+            {
+                Text = "О программе", FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false,
+                ShowInTaskbar = false, ClientSize = new Size(470, 246), BackColor = Theme.Surface,
+                ForeColor = Theme.Text, Font = Theme.UiFont, AutoScaleMode = AutoScaleMode.Dpi
+            })
+            {
+                var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
+                var mark = new Label { Left = 24, Top = 25, Width = 48, Height = 48, Text = "R", TextAlign = ContentAlignment.MiddleCenter, BackColor = Theme.Accent, ForeColor = Color.White, Font = Theme.UiFontBold };
+                var title = new Label { Left = 88, Top = 24, Width = 350, Height = 27, Text = "RED OS Package Updater", Font = Theme.UiFontBold, ForeColor = Theme.Text };
+                var build = new Label { Left = 89, Top = 53, Width = 330, Height = 22, Text = "Версия " + version, ForeColor = Theme.Muted };
+                var description = new Label { Left = 24, Top = 96, Width = 414, Height = 54, Text = "Профессиональное управление обновлениями и проверкой уязвимостей серверов RED OS по SSH.", ForeColor = Theme.Text };
+                var footer = new Panel { Dock = DockStyle.Bottom, Height = 62, BackColor = Theme.HeaderBg };
+                Theme.EdgeLine(footer, DockStyle.Top);
+                var update = new ModernButton { Text = "Проверить обновления", Left = 24, Top = 15, Width = 170, Height = 32, DialogResult = DialogResult.Retry };
+                var close = new ModernButton { Text = "Закрыть", Left = 354, Top = 15, Width = 92, Height = 32, DialogResult = DialogResult.Cancel };
+                Theme.Secondary(update); Theme.Primary(close);
+                footer.Controls.Add(update); footer.Controls.Add(close);
+                f.Controls.AddRange(new Control[] { stripe, mark, title, build, description, footer });
+                f.AcceptButton = close; f.CancelButton = close;
+                Theme.AnimateDialog(f);
+                return f.ShowDialog(owner) == DialogResult.Retry;
+            }
+        }
+
+        public static DialogResult ImportChoice(IWin32Window owner)
+        {
+            using (var f = new Form
+            {
+                Text = "Импорт конфигурации", FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false,
+                ShowInTaskbar = false, ClientSize = new Size(520, 210), BackColor = Theme.Surface,
+                ForeColor = Theme.Text, Font = Theme.UiFont, AutoScaleMode = AutoScaleMode.Dpi
+            })
+            {
+                var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
+                var title = new Label { Left = 24, Top = 22, Width = 472, Height = 27, Text = "Как применить импортированные данные?", Font = Theme.UiFontBold };
+                var hint = new Label { Left = 24, Top = 56, Width = 472, Height = 54, Text = "Заменить — текущие системы и учётки будут заменены.\nДобавить — новые данные будут объединены с текущими без дублей.", ForeColor = Theme.Muted };
+                var footer = new Panel { Dock = DockStyle.Bottom, Height = 62, BackColor = Theme.HeaderBg };
+                Theme.EdgeLine(footer, DockStyle.Top);
+                var cancel = new ModernButton { Text = "Отмена", Left = 24, Top = 15, Width = 92, Height = 32, DialogResult = DialogResult.Cancel };
+                var merge = new ModernButton { Text = "Добавить", Left = 308, Top = 15, Width = 92, Height = 32, DialogResult = DialogResult.No };
+                var replace = new ModernButton { Text = "Заменить", Left = 410, Top = 15, Width = 92, Height = 32, DialogResult = DialogResult.Yes };
+                Theme.Secondary(cancel); Theme.Secondary(merge); Theme.Primary(replace);
+                footer.Controls.AddRange(new Control[] { cancel, merge, replace });
+                f.Controls.AddRange(new Control[] { stripe, title, hint, footer });
+                f.CancelButton = cancel;
+                Theme.AnimateDialog(f);
+                return f.ShowDialog(owner);
             }
         }
 
         private static void Show(IWin32Window owner, string title, string message, bool error)
         {
+            string body = message ?? "";
+            const int dialogWidth = 500;
+            Size measured = TextRenderer.MeasureText(body, Theme.UiFont, new Size(452, 220), TextFormatFlags.WordBreak);
+            int dialogHeight = Math.Max(152, Math.Min(320, measured.Height + 104));
             using (var f = new Form
             {
                 Text = title,
@@ -52,24 +115,25 @@ namespace RedOSPackageUpdater
                 MinimizeBox = false,
                 MaximizeBox = false,
                 ShowInTaskbar = false,
-                ClientSize = new Size(390, 128),
+                ClientSize = new Size(dialogWidth, dialogHeight),
                 BackColor = Theme.Surface,
                 ForeColor = Theme.Text,
                 Font = Theme.UiFont
             })
             {
+                f.AutoScaleMode = AutoScaleMode.Dpi;
                 var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = error ? Theme.Danger : Theme.Accent };
                 var text = new Label
                 {
-                    Left = 24, Top = 18, Width = 342, Height = 46,
-                    Text = message ?? "", AutoEllipsis = true,
+                    Left = 24, Top = 18, Width = 452, Height = dialogHeight - 88,
+                    Text = body, AutoEllipsis = true,
                     TextAlign = ContentAlignment.MiddleLeft,
                     Font = Theme.UiFont,
                     ForeColor = Theme.Text
                 };
-                var footer = new Panel { Dock = DockStyle.Bottom, Height = 50, BackColor = Theme.HeaderBg };
+                var footer = new Panel { Dock = DockStyle.Bottom, Height = 54, BackColor = Theme.HeaderBg };
                 Theme.EdgeLine(footer, DockStyle.Top);
-                var ok = new Button { Text = "Понятно", Width = 82, Height = 28, Left = 284, Top = 11, DialogResult = DialogResult.OK };
+                var ok = new ModernButton { Text = "Понятно", Width = 92, Height = 32, Left = 384, Top = 11, DialogResult = DialogResult.OK };
                 Theme.Primary(ok);
                 footer.Controls.Add(ok);
                 f.Controls.Add(stripe);
@@ -78,6 +142,7 @@ namespace RedOSPackageUpdater
                 f.AcceptButton = ok;
                 f.CancelButton = ok;
                 f.Shown += delegate { ok.Focus(); };
+                Theme.AnimateDialog(f);
                 f.ShowDialog(owner);
             }
         }
@@ -85,7 +150,7 @@ namespace RedOSPackageUpdater
 
     internal sealed class UpdateProgressDialog : Form
     {
-        private readonly ProgressBar _bar;
+        private readonly ModernProgressBar _bar;
         private readonly Label _details;
         private readonly Label _title;
 
@@ -96,14 +161,16 @@ namespace RedOSPackageUpdater
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ControlBox = false;
             ShowInTaskbar = false;
+            AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(460, 138);
             BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
             var stripe = new Panel { Dock = DockStyle.Top, Height = 4, BackColor = Theme.Accent };
             _title = new Label { Left = 22, Top = 18, Width = 416, Height = 24, Text = "Скачивание новой версии...", Font = Theme.UiFontBold };
-            _bar = new ProgressBar { Left = 22, Top = 52, Width = 416, Height = 18, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 24 };
+            _bar = new ModernProgressBar { Left = 22, Top = 56, Width = 416, Height = 9, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 24 };
             _details = new Label { Left = 22, Top = 82, Width = 416, Height = 26, Text = "Подключение к GitHub...", ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft };
             var hint = new Label { Left = 22, Top = 111, Width = 416, Height = 18, Text = "После проверки файл будет установлен автоматически.", ForeColor = Theme.Muted };
             Controls.AddRange(new Control[] { stripe, _title, _bar, _details, hint });
+            Theme.AnimateDialog(this);
         }
 
         public void SetStage(string title, string details)
@@ -139,9 +206,9 @@ namespace RedOSPackageUpdater
             using (var f = new Form { Text = title, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ClientSize = size })
             {
                 var lbl = new Label { Text = label, Left = 10, Top = 8, Width = size.Width - 20, AutoSize = false, Height = 20 };
-                var tb = new TextBox { Left = 10, Top = 30, Width = size.Width - 20, Text = def ?? "", Multiline = multiline, Height = multiline ? size.Height - 80 : 24, ScrollBars = multiline ? ScrollBars.Vertical : ScrollBars.None, AcceptsReturn = multiline };
-                var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Width = 90, Top = size.Height - 40, Left = size.Width - 200 };
-                var cancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Width = 90, Top = size.Height - 40, Left = size.Width - 100 };
+                var tb = new ModernTextBox { Left = 10, Top = 30, Width = size.Width - 20, Text = def ?? "", Multiline = multiline, Height = multiline ? size.Height - 80 : 28, ScrollBars = multiline ? ScrollBars.Vertical : ScrollBars.None, AcceptsReturn = multiline };
+                var ok = new ModernButton { Text = "Сохранить", DialogResult = DialogResult.OK, Width = 100, Height = 30, Top = size.Height - 42, Left = size.Width - 220 };
+                var cancel = new ModernButton { Text = "Отмена", DialogResult = DialogResult.Cancel, Width = 100, Height = 30, Top = size.Height - 42, Left = size.Width - 110 };
                 f.Controls.AddRange(new Control[] { lbl, tb, ok, cancel });
                 Theme.Dialog(f);
                 f.AcceptButton = multiline ? null : ok; f.CancelButton = cancel;
@@ -166,26 +233,26 @@ namespace RedOSPackageUpdater
             MinimizeBox = false; MaximizeBox = false; ClientSize = new Size(360, 210);
 
             AddLbl("Имя:", 12);
-            _name = new TextBox { Left = 110, Top = 10, Width = 230, Text = existing != null ? existing.Name : "" };
+            _name = new ModernTextBox { Left = 110, Top = 10, Width = 230, Text = existing != null ? existing.Name : "", Placeholder = "Например, redos-app01" };
             AddLbl("Host/IP:", 42);
-            _host = new TextBox { Left = 110, Top = 40, Width = 230, Text = existing != null ? existing.Host : "" };
+            _host = new ModernTextBox { Left = 110, Top = 40, Width = 230, Text = existing != null ? existing.Host : "", Placeholder = "IP-адрес или DNS-имя" };
             AddLbl("Порт:", 72);
-            _port = new NumericUpDown { Left = 110, Top = 70, Width = 80, Minimum = 1, Maximum = 65535 };
+            _port = new ModernNumericUpDown { Left = 110, Top = 70, Width = 80, Minimum = 1, Maximum = 65535 };
             // Value зажимаем в [1..65535]: битый порт из импорта/ручной правки конфига иначе роняет диалог (ArgumentOutOfRange).
             _port.Value = (existing != null && existing.Port >= 1 && existing.Port <= 65535) ? existing.Port : 22;
             AddLbl("Роль:", 102);
-            _role = new TextBox { Left = 110, Top = 100, Width = 230, Text = existing != null ? existing.Role : "" };
-            _enabled = new CheckBox { Left = 110, Top = 132, Width = 230, Text = "Включён", Checked = existing == null || existing.Enabled };
+            _role = new ModernTextBox { Left = 110, Top = 100, Width = 230, Text = existing != null ? existing.Role : "", Placeholder = "Назначение узла" };
+            _enabled = new ModernCheckBox { Left = 110, Top = 132, Width = 230, Text = "Включён", Checked = existing == null || existing.Enabled, BackColor = Theme.Surface };
             Theme.Check(_enabled);
 
-            var ok = new Button { Text = "OK", Width = 90, Top = 168, Left = 150, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Отмена", Width = 90, Top = 168, Left = 250, DialogResult = DialogResult.Cancel };
+            var ok = new ModernButton { Text = "Сохранить", Width = 100, Height = 30, Top = 166, Left = 140, DialogResult = DialogResult.OK };
+            var cancel = new ModernButton { Text = "Отмена", Width = 100, Height = 30, Top = 166, Left = 250, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) =>
             {
-                if (string.IsNullOrEmpty(_host.Text.Trim())) { MessageBox.Show("Укажите Host/IP"); DialogResult = DialogResult.None; return; }
+                if (string.IsNullOrEmpty(_host.Text.Trim())) { AppDialog.Info(this, "Проверьте данные", "Укажите Host/IP."); DialogResult = DialogResult.None; return; }
                 // Раньше проверялся только Host - узел с пустым именем проходил беспрепятственно и
                 // в дереве выглядел неотличимо от других строк (пустая строка вместо имени).
-                if (string.IsNullOrEmpty(_name.Text.Trim())) { MessageBox.Show("Укажите имя узла"); DialogResult = DialogResult.None; return; }
+                if (string.IsNullOrEmpty(_name.Text.Trim())) { AppDialog.Info(this, "Проверьте данные", "Укажите имя узла."); DialogResult = DialogResult.None; return; }
                 Result = new Node { Name = _name.Text.Trim(), Host = _host.Text.Trim(), Port = (int)_port.Value, Role = _role.Text.Trim(), Enabled = _enabled.Checked };
             };
             Controls.AddRange(new Control[] { _name, _host, _port, _role, _enabled, ok, cancel });
@@ -210,8 +277,8 @@ namespace RedOSPackageUpdater
             // диалога: Control.Dispose() не освобождает шрифт, назначенный через свойство Font (WinForms
             // не считает себя его владельцем) - при повторных открытиях это была утечка GDI-хендлов.
             _tb = new TextBox { Left = 10, Top = 44, Width = 440, Height = 280, Multiline = true, ScrollBars = ScrollBars.Both, AcceptsReturn = true, WordWrap = false, Font = Theme.Mono };
-            var ok = new Button { Text = "Добавить", Width = 100, Top = 332, Left = 250, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Отмена", Width = 100, Top = 332, Left = 360, DialogResult = DialogResult.Cancel };
+            var ok = new ModernButton { Text = "Добавить", Width = 100, Height = 30, Top = 332, Left = 250, DialogResult = DialogResult.OK };
+            var cancel = new ModernButton { Text = "Отмена", Width = 100, Height = 30, Top = 332, Left = 360, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) => { Result = Parse(_tb.Text); };
             Controls.AddRange(new Control[] { lbl, _tb, ok, cancel });
             Theme.Dialog(this);
@@ -278,7 +345,7 @@ namespace RedOSPackageUpdater
             StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(480, 400);
 
             var info = new Label { Text = "Программа последовательно проверяет учётные записи и запоминает подходящую для каждого узла. Пароли всегда скрыты.", Left = 10, Top = 6, Width = 460, Height = 34 };
-            _grid = new DataGridView { Left = 10, Top = 40, Width = 460, Height = 280, AllowUserToAddRows = true, AllowUserToDeleteRows = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect };
+            _grid = new ModernDataGridView { Left = 10, Top = 40, Width = 460, Height = 280, AllowUserToAddRows = true, AllowUserToDeleteRows = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect, EmptyTitle = "Учётных записей пока нет", EmptyHint = "Добавьте логин и пароль в первую строку" };
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Логин", Name = "user", FillWeight = 30 });
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Пароль", Name = "pass", FillWeight = 70 });
 
@@ -302,7 +369,7 @@ namespace RedOSPackageUpdater
             if (pool != null)
                 foreach (var c in pool) AddCred(c.User, c.Password);
 
-            var bulk = new Button { Text = "Добавить несколько", Left = 10, Top = 332, Width = 160 };
+            var bulk = new ModernButton { Text = "Добавить несколько", Left = 10, Top = 332, Width = 160, Height = 30 };
             bulk.Click += (s, e) =>
             {
                 string txt = Prompt.Show("Пароли", "Каждая строка - пароль, либо 'логин:пароль' (по умолчанию логин root):", "", true, new Size(420, 320));
@@ -316,8 +383,8 @@ namespace RedOSPackageUpdater
                     AddCred(user, pass);   // дубль просто не добавится
                 }
             };
-            var ok = new Button { Text = "Сохранить", Width = 100, Top = 360, Left = 270, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Отмена", Width = 90, Top = 360, Left = 380, DialogResult = DialogResult.Cancel };
+            var ok = new ModernButton { Text = "Сохранить", Width = 100, Height = 30, Top = 360, Left = 270, DialogResult = DialogResult.OK };
+            var cancel = new ModernButton { Text = "Отмена", Width = 90, Height = 30, Top = 360, Left = 380, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) =>
             {
                 Result = new List<Credential>();
@@ -362,7 +429,7 @@ namespace RedOSPackageUpdater
             MinimizeBox = false; MaximizeBox = false; ClientSize = new Size(470, 320);
 
             Controls.Add(new Label { Text = "Хост репозитория:", Left = 10, Top = 10, Width = 450 });
-            _host = new TextBox { Left = 10, Top = 30, Width = 450, Text = host ?? "" };
+            _host = new ModernTextBox { Left = 10, Top = 30, Width = 450, Text = host ?? "", Placeholder = "IP-адрес или DNS-имя" };
             Controls.Add(_host);
             Controls.Add(new Label { Text = "Скрипты (полный путь, по одному на строку) - запускаются по очереди:", Left = 10, Top = 60, Width = 450 });
             _scripts = new TextBox
@@ -373,16 +440,16 @@ namespace RedOSPackageUpdater
             };
             Controls.Add(_scripts);
 
-            var ok = new Button { Text = "Запустить", Width = 110, Top = 256, Left = 240, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Отмена", Width = 90, Top = 256, Left = 360, DialogResult = DialogResult.Cancel };
+            var ok = new ModernButton { Text = "Запустить", Width = 110, Height = 30, Top = 256, Left = 240, DialogResult = DialogResult.OK };
+            var cancel = new ModernButton { Text = "Отмена", Width = 90, Height = 30, Top = 256, Left = 360, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) =>
             {
                 Host = _host.Text.Trim();
                 Scripts = new List<string>();
                 foreach (var raw in _scripts.Text.Replace("\r", "").Split('\n'))
                 { var t = raw.Trim(); if (t.Length > 0) Scripts.Add(t); }
-                if (string.IsNullOrEmpty(Host)) { MessageBox.Show("Укажите хост репозитория"); DialogResult = DialogResult.None; return; }
-                if (Scripts.Count == 0) { MessageBox.Show("Укажите хотя бы один скрипт"); DialogResult = DialogResult.None; return; }
+                if (string.IsNullOrEmpty(Host)) { AppDialog.Info(this, "Проверьте данные", "Укажите хост репозитория."); DialogResult = DialogResult.None; return; }
+                if (Scripts.Count == 0) { AppDialog.Info(this, "Проверьте данные", "Укажите хотя бы один скрипт."); DialogResult = DialogResult.None; return; }
             };
             Controls.AddRange(new Control[] { ok, cancel });
             Theme.Dialog(this);
@@ -419,8 +486,8 @@ namespace RedOSPackageUpdater
             _maxAuth = Row("Попыток авторизации (0 — все)", s.MaxAuthAttempts, 0, 50, ref y);
             _backupKeep = Row("Бэкапов на узле", s.BackupKeep, 1, 50, ref y, "шт.");
 
-            var ok = new Button { Text = "Сохранить", Width = 104, Top = y + 10, Left = 234, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Отмена", Width = 96, Top = y + 10, Left = 348, DialogResult = DialogResult.Cancel };
+            var ok = new ModernButton { Text = "Сохранить", Width = 104, Height = 30, Top = y + 10, Left = 234, DialogResult = DialogResult.OK };
+            var cancel = new ModernButton { Text = "Отмена", Width = 96, Height = 30, Top = y + 10, Left = 348, DialogResult = DialogResult.Cancel };
             ok.Click += (s2, e) => Result = new AppSettings
             {
                 MaxParallel = (int)_par.Value, ConnectTimeoutSec = (int)_conn.Value, InitialRebootDelaySec = (int)_initDelay.Value,
@@ -447,7 +514,7 @@ namespace RedOSPackageUpdater
         private NumericUpDown Row(string label, int val, int min, int max, ref int y, string unit)
         {
             Controls.Add(new Label { Text = label, Left = 22, Top = y + 4, Width = 245 });
-            var n = new NumericUpDown { Left = 280, Top = y, Width = 112, Minimum = min, Maximum = max, Value = Math.Min(Math.Max(val, min), max) };
+            var n = new ModernNumericUpDown { Left = 280, Top = y, Width = 112, Minimum = min, Maximum = max, Value = Math.Min(Math.Max(val, min), max) };
             Controls.Add(n);
             if (!string.IsNullOrEmpty(unit)) Controls.Add(new Label { Text = unit, Left = 400, Top = y + 4, Width = 42, ForeColor = Theme.Muted });
             y += 30; return n;

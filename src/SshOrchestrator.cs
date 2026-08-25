@@ -358,8 +358,8 @@ namespace RedOSPackageUpdater
                         foreach (var v in res.Vulnerabilities)
                             if (v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(v.FixedVersion)) bduFixable++;
                         res.Status = vulnTotal > 0 ? HostStatus.Warn : HostStatus.Ok;
-                        res.UpdateResult = "всего: " + vulnTotal;
-                        res.Note = vulnTotal > 0 ? ("находок БДУ ФСТЭК: " + vulnBdu + " (с исправлением: " + bduFixable + "), критических: " + vulnCritical + ", высоких: " + vulnHigh) : "уязвимостей не найдено";
+                        res.UpdateResult = "кандидатов: " + vulnTotal;
+                        res.Note = vulnTotal > 0 ? ("совпадений Trivy/БДУ: " + vulnBdu + " (с исправлением: " + bduFixable + "), критических: " + vulnCritical + ", высоких: " + vulnHigh + "; применимость к версии RED OS — в отчёте") : "уязвимостей не найдено";
                         if (trivyInstalled == "yes") res.Note += "; Trivy установлен автоматически";
                     }
                     else
