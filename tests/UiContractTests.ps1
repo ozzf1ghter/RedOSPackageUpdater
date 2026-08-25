@@ -109,7 +109,7 @@ $comboFillIsClipped = $controls -match 'GraphicsState buttonState = g\.Save\(\)'
     $controls -match 'g\.SetClip\(clipPath\)'
 Assert-Ui $comboFillIsClipped 'combo dropdown fill cannot restore square corners'
 $transparentIconPipeline = $chrome -match 'new Rectangle\(14,11,16,16\)' -and
-    ([IO.File]::ReadAllText((Join-Path $project 'tools\Extract-ApprovedIcon.ps1'))) -match 'Clear-ConnectedBoardBackground'
+    ([IO.File]::ReadAllText((Join-Path $project 'tools\Extract-ApprovedIcon.ps1'))) -match 'Apply-CleanRoundedTileMask'
 Assert-Ui $transparentIconPipeline 'icon pipeline removes board corners and uses an exact title-bar frame'
 $uniformPageHeaders = $shell -match 'const int headerHeight = 78' -and
     $shell -match 'const int actionWidth = 146' -and $shell -match 'const int actionHeight = 40' -and

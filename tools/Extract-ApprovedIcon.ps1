@@ -34,22 +34,39 @@ function Find-TileBounds($region) {
     New-Object Drawing.Rectangle $minX,$minY,($maxX-$minX+1),($maxY-$minY+1)
 }
 
-# Удаляет только светлый нейтральный фон, связанный с краями изображения. Белые элементы
-# монограммы находятся внутри синей плитки и до краёв не связаны, поэтому сохраняются.
-function Clear-ConnectedBoardBackground([Drawing.Bitmap]$bitmap) {
-    $w=$bitmap.Width;$h=$bitmap.Height;$seen=New-Object bool[] ($w*$h)
-    $queue=New-Object 'Collections.Generic.Queue[int]'
-    function Is-BoardPixel([Drawing.Color]$c) {
-        $max=[Math]::Max($c.R,[Math]::Max($c.G,$c.B));$min=[Math]::Min($c.R,[Math]::Min($c.G,$c.B))
-        return $min-ge 180 -and ($max-$min)-le 38
-    }
-    for($x=0;$x-lt $w;$x++){$queue.Enqueue($x);$queue.Enqueue(($h-1)*$w+$x)}
-    for($y=1;$y-lt $h-1;$y++){$queue.Enqueue($y*$w);$queue.Enqueue($y*$w+$w-1)}
-    while($queue.Count-gt 0){$i=$queue.Dequeue();if($seen[$i]){continue};$seen[$i]=$true;$x=$i%$w;$y=[Math]::Floor($i/$w)
-        if(-not(Is-BoardPixel $bitmap.GetPixel($x,$y))){continue}
-        $bitmap.SetPixel($x,$y,[Drawing.Color]::FromArgb(0,0,0,0))
-        if($x-gt 0){$queue.Enqueue($i-1)};if($x-lt $w-1){$queue.Enqueue($i+1)};if($y-gt 0){$queue.Enqueue($i-$w)};if($y-lt $h-1){$queue.Enqueue($i+$w)}
-    }
+# Строит альфа-канал плитки заново. Это удаляет не только белый фон макета, но и
+# светлый RGB-ореол, появившийся при сглаживании синей плитки на белой подложке.
+function Apply-CleanRoundedTileMask([Drawing.Bitmap]$bitmap) {
+    $w=$bitmap.Width;$h=$bitmap.Height;$scale=8;$mw=$w*$scale;$mh=$h*$scale
+    $large=New-Object Drawing.Bitmap -ArgumentList $mw,$mh,([Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $mask=New-Object Drawing.Bitmap -ArgumentList $w,$h,([Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g=[Drawing.Graphics]::FromImage($large)
+    try {
+        $g.Clear([Drawing.Color]::Transparent);$g.SmoothingMode=[Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $radius=[float]($w*0.215*$scale);$diameter=$radius*2;$right=$mw-1;$bottom=$mh-1
+        $path=New-Object Drawing.Drawing2D.GraphicsPath
+        try {
+            $path.AddArc(0,0,$diameter,$diameter,180,90);$path.AddArc($right-$diameter,0,$diameter,$diameter,270,90)
+            $path.AddArc($right-$diameter,$bottom-$diameter,$diameter,$diameter,0,90);$path.AddArc(0,$bottom-$diameter,$diameter,$diameter,90,90);$path.CloseFigure()
+            $brush=New-Object Drawing.SolidBrush ([Drawing.Color]::White);try{$g.FillPath($brush,$path)}finally{$brush.Dispose()}
+        } finally {$path.Dispose()}
+    } finally {$g.Dispose()}
+    $mg=[Drawing.Graphics]::FromImage($mask)
+    try {$mg.InterpolationMode=[Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic;$mg.DrawImage($large,0,0,$w,$h)} finally {$mg.Dispose();$large.Dispose()}
+    try {
+        for($y=0;$y-lt $h;$y++){for($x=0;$x-lt $w;$x++){
+            $coverage=$mask.GetPixel($x,$y).A;$c=$bitmap.GetPixel($x,$y)
+            if($coverage-eq 0){$bitmap.SetPixel($x,$y,[Drawing.Color]::FromArgb(0,0,0,0));continue}
+            $position=if($h-le 1){0}else{$y/($h-1.0)}
+            $baseR=[Math]::Round(30+(10-30)*$position);$baseG=[Math]::Round(101+(67-101)*$position);$baseB=[Math]::Round(222+(181-222)*$position)
+            $edgeDistance=[Math]::Min([Math]::Min($x,$w-1-$x),[Math]::Min($y,$h-1-$y))
+            $logo=if($edgeDistance-ge [Math]::Max(1,[Math]::Round($w*0.065))){[Math]::Max(0,[Math]::Min(1,($c.R-42)/190.0))}else{0}
+            $r=[Math]::Round($baseR+(255-$baseR)*$logo)
+            $green=[Math]::Round($baseG+(255-$baseG)*$logo)
+            $b=[Math]::Round($baseB+(255-$baseB)*$logo)
+            $bitmap.SetPixel($x,$y,[Drawing.Color]::FromArgb($coverage,$r,$green,$b))
+        }}
+    } finally {$mask.Dispose()}
 }
 
 $pngs=@()
@@ -64,12 +81,28 @@ try {
             $g.InterpolationMode = if($size -le 24){[Drawing.Drawing2D.InterpolationMode]::NearestNeighbor}else{[Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic}
             $g.PixelOffsetMode=[Drawing.Drawing2D.PixelOffsetMode]::HighQuality
             $g.DrawImage($source,(New-Object Drawing.Rectangle 0,0,$size,$size),$bounds,[Drawing.GraphicsUnit]::Pixel)
-            Clear-ConnectedBoardBackground $bitmap
+            Apply-CleanRoundedTileMask $bitmap
             $path=Join-Path $assetDir ("app-icon-{0}.png" -f $size)
             $bitmap.Save($path,[Drawing.Imaging.ImageFormat]::Png); $pngs+=@{Size=$size;Path=$path}
         } finally {$g.Dispose();$bitmap.Dispose()}
     }
 } finally {$source.Dispose()}
+
+# Малые кадры строятся из уже очищенного мастер-значка. Отдельные миниатюры макета
+# слишком малы для надёжного отделения белой монограммы от светлого фона.
+$master=[Drawing.Bitmap]::FromFile((Join-Path $assetDir 'app-icon-256.png'))
+try {
+    foreach($item in $pngs|Where-Object{$_.Size-lt 256}) {
+        $size=[int]$item.Size;$small=New-Object Drawing.Bitmap -ArgumentList $size,$size,([Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $sg=[Drawing.Graphics]::FromImage($small)
+        try {
+            $sg.Clear([Drawing.Color]::Transparent);$sg.CompositingMode=[Drawing.Drawing2D.CompositingMode]::SourceCopy
+            $sg.CompositingQuality=[Drawing.Drawing2D.CompositingQuality]::HighQuality;$sg.InterpolationMode=[Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $sg.PixelOffsetMode=[Drawing.Drawing2D.PixelOffsetMode]::HighQuality;$sg.DrawImage($master,0,0,$size,$size)
+            $small.Save($item.Path,[Drawing.Imaging.ImageFormat]::Png)
+        } finally {$sg.Dispose();$small.Dispose()}
+    }
+} finally {$master.Dispose()}
 
 $ico=Join-Path $Project 'icon.ico'
 # Win32 resource compiler из .NET Framework 4.x получает классический 24-bit DIB + AND-mask.
