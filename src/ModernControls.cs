@@ -292,14 +292,16 @@ namespace RedOSPackageUpdater
         {
             BorderStyle = BorderStyle.FixedSingle; BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
         }
-        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyPlaceholder(); ApplyShape(); }
-        protected override void OnResize(EventArgs e) { base.OnResize(e); ApplyShape(); }
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyPlaceholder(); ApplyMargins(); }
         protected override void OnEnter(EventArgs e) { base.OnEnter(e); BackColor = Theme.IsDark ? Theme.HeaderBg : Color.White; }
         protected override void OnLeave(EventArgs e) { base.OnLeave(e); BackColor = Theme.Surface; }
         private void ApplyPlaceholder() { if (IsHandleCreated) SendMessage(Handle, EmSetCueBanner, new IntPtr(1), _placeholder); }
-        private void ApplyShape()
+        private void ApplyMargins()
         {
-            ModernControlShape.Apply(this, 5);
+            // Нативный TextBox рисует прямоугольную NC-рамку. Обрезание её круглым Region
+            // оставляло четыре видимых пробела в углах. Скругление допустимо только у полностью
+            // owner-drawn оболочки; здесь сохраняем цельную системную рамку и внутренние поля.
+            if (Region != null) { Region.Dispose(); Region = null; }
             if (IsHandleCreated && !Multiline) SendMessagePtr(Handle, EmSetMargins, new IntPtr(3), new IntPtr((6 << 16) | 6));
         }
     }

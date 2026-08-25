@@ -91,6 +91,9 @@ $singleSelectionToggle = $main -match '_btnToggleAll' -and $main -notmatch 'var 
 Assert-Ui $singleSelectionToggle 'server selection uses one contextual toggle button'
 $noTopStripe = $chrome -notmatch 'FillRectangle\(accent,\s*0,\s*0,\s*Width,\s*2\)'
 Assert-Ui $noTopStripe 'title bar has no decorative top stripe'
+$textBoxesKeepCompleteBorders = $controls -match 'class ModernTextBox[\s\S]*?ApplyMargins' -and
+    $controls -match 'if \(Region != null\)'
+Assert-Ui $textBoxesKeepCompleteBorders 'native text boxes keep complete corner borders'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')
