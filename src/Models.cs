@@ -30,7 +30,7 @@ namespace RedOSPackageUpdater
     public class SubSystem
     {
         public string Name { get; set; }
-        public List<string> Services { get; set; }   // маски сервисов для prestop
+        public List<string> Services { get; set; }   // systemd-службы: остановить до reboot, проверить после запуска
         public List<Node> Nodes { get; set; }
 
         public SubSystem()

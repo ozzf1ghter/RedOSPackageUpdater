@@ -5,28 +5,11 @@ using System.IO;
 namespace RedOSPackageUpdater
 {
     /// <summary>
-    /// Правила операций, не зависящие от WinForms. UI передаёт только выбранный индекс
-    /// сценария и отображает уже готовые значения.
+    /// Правила результатов и журналов, не зависящие от WinForms.
     /// </summary>
     internal static class OperationDomain
     {
         private const string LogDirTimeFormat = "yyyy-MM-dd_HHmmss_fff";
-
-        public static bool IsPackageMode(int profileIndex, int firstPackageIndex)
-        {
-            return profileIndex >= firstPackageIndex;
-        }
-
-        public static string PackageAction(int profileIndex, int installIndex, int removeIndex,
-            int lockIndex, int unlockIndex, int lockListIndex)
-        {
-            if (profileIndex == installIndex) return "install";
-            if (profileIndex == removeIndex) return "remove";
-            if (profileIndex == lockIndex) return "lock";
-            if (profileIndex == unlockIndex) return "unlock";
-            if (profileIndex == lockListIndex) return "locklist";
-            return "update";
-        }
 
         public static string ActionTitle(string action)
         {

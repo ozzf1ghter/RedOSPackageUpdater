@@ -274,7 +274,7 @@ namespace RedOSPackageUpdater
         public ModernDataGridView()
         {
             EmptyTitle = "Здесь появятся результаты";
-            EmptyHint = "Запустите предпроверку или операцию для выбранных серверов";
+            EmptyHint = "Проверьте изменения или запустите операцию на выбранных серверах";
             DoubleBuffered = true;
         }
         protected override void OnPaint(PaintEventArgs e)

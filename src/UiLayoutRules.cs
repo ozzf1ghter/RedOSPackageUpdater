@@ -24,10 +24,12 @@ namespace RedOSPackageUpdater
             // При меньшей ширине длинный итоговый статус скрывается из верхней
             // строки (полный текст остаётся в нижней строке состояния/tooltip),
             // чтобы не перекрывать кнопки запуска.
-            result.Compact = width < 1024;
+            // Внутренняя ширина страницы меньше ширины окна из-за навигации. При 1240px
+            // окно даёт около 1026px рабочей области: полный режим здесь перекрывал сценарий.
+            result.Compact = width < 1180;
             result.PreviewWidth = result.Compact ? 128 : 146;
             result.RunWidth = result.Compact ? 176 : 194;
-            result.StopWidth = result.Compact ? 74 : 82;
+            result.StopWidth = result.Compact ? 94 : 104;
             int right = width - 12;
             result.StatusLeft = right - statusWidth;
             int actionRight = result.Compact ? right : result.StatusLeft - 8;

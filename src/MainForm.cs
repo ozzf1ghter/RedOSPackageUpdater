@@ -28,12 +28,6 @@ namespace RedOSPackageUpdater
         private ModernTextBox _pkgBox;
         private Button _btnRun, _btnStop, _btnPreview, _btnVulnerabilityScan;
         private Button _btnEditSelection, _btnSystemServices, _btnToggleAll;
-        private const int PkgInstallIndex = 3;   // индексы режимов "пакеты" в _profile
-        private const int PkgUpdateIndex = 4;
-        private const int PkgRemoveIndex = 5;
-        private const int PkgLockIndex = 6;      // versionlock: закрепить версию
-        private const int PkgUnlockIndex = 7;    // versionlock: снять закрепление
-        private const int PkgLockListIndex = 8;  // versionlock: показать закреплённые (только чтение)
         private Panel _leftPanel;
         private SplitContainer _workspaceSplit;
         private SplitContainer _contentSplit;
@@ -143,19 +137,11 @@ namespace RedOSPackageUpdater
             top.Controls.Add(profileLbl);
             // Без внешней карточки: нативная фактическая высота ComboBox зависит от DPI и темы,
             // а прежний контейнер высотой 30px обрезал его нижнюю границу.
-            var profileBox = new Panel { Left = 12, Top = 28, Width = 286, Height = 32, BackColor = Theme.Surface };
+            var profileBox = new Panel { Left = 12, Top = 28, Width = 360, Height = 32, BackColor = Theme.Surface };
             top.Controls.Add(profileBox);
             _profile = new ModernComboBox { Dock = DockStyle.Fill };
             Theme.Combo(_profile);
-            _profile.Items.Add("Ядро kernel-lt + security");
-            _profile.Items.Add("Только security");
-            _profile.Items.Add("Только ядро (kernel-lt)");
-            _profile.Items.Add("Установить пакеты");     // индекс 3 = PkgInstallIndex
-            _profile.Items.Add("Обновить пакеты");        // индекс 4 = PkgUpdateIndex
-            _profile.Items.Add("Удалить пакеты");         // индекс 5 = PkgRemoveIndex
-            _profile.Items.Add("Закрепить версию (versionlock)");   // индекс 6 = PkgLockIndex
-            _profile.Items.Add("Снять закрепление версии");         // индекс 7 = PkgUnlockIndex
-            _profile.Items.Add("Показать закреплённые версии");     // индекс 8 = PkgLockListIndex
+            foreach (OperationScenario scenario in OperationScenario.All) _profile.Items.Add(scenario);
             _profile.SelectedIndex = 0;
             _profile.SelectedIndexChanged += (s, e) => UpdateModeUi();
             profileBox.Controls.Add(_profile);
@@ -169,20 +155,23 @@ namespace RedOSPackageUpdater
                 "Режим для предварительной установки вне окна обслуживания - перезагрузить все узлы можно\n" +
                 "позже отдельным запуском (профиль \"Обновить пакеты\" + reboot, либо вручную).");
             // Поле пакетов (видно только в режимах "пакеты"), на второй строке вместо строки исключений.
-            _pkgLabel = new Label { Left = 12, Top = 66, Width = 72, Height = 20, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted, Font = Theme.UiFontSmall, TextAlign = ContentAlignment.MiddleLeft };
+            _pkgLabel = new Label { Left = 12, Top = 66, Width = 170, Height = 20, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted, Font = Theme.UiFontSmall, TextAlign = ContentAlignment.MiddleLeft };
             top.Controls.Add(_pkgLabel);
-            _pkgBox = new ModernTextBox { Left = 88, Top = 61, Width = 400, Height = 28, Visible = false, Font = Theme.Mono, Placeholder = "Имя пакета или пакет-версия" };
+            _pkgBox = new ModernTextBox { Left = 188, Top = 61, Width = 400, Height = 28, Visible = false, Font = Theme.Mono, Placeholder = "Имя пакета или пакет-версия" };
             top.Controls.Add(_pkgBox);
-            _btnPreview = new ModernButton { Width = 130, Height = 32, Text = "Предпроверка", IconName = "search" };
+            _btnPreview = new ModernButton { Width = 146, Height = 32, Text = "Проверить изменения", IconName = "search" };
             _btnPreview.Click += (s, e) => PreviewChecked();
+            _tips.SetToolTip(_btnPreview, "Без установки показывает реальную транзакцию DNF: пакеты, зависимости и исключения");
             Theme.Secondary(_btnPreview);
             top.Controls.Add(_btnPreview);
             _btnRun = new ModernButton { Width = 174, Height = 32, Text = "Запустить отмеченные", IconName = "play" };
             _btnRun.Click += (s, e) => RunChecked();
+            _tips.SetToolTip(_btnRun, "Выполнить выбранный сценарий на отмеченных серверах");
             Theme.Primary(_btnRun);
             top.Controls.Add(_btnRun);
-            _btnStop = new ModernButton { Width = 82, Height = 32, Text = "Стоп", Enabled = false, IconName = "stop" };
+            _btnStop = new ModernButton { Width = 94, Height = 32, Text = "Остановить", Enabled = false, IconName = "stop" };
             _btnStop.Click += (s, e) => { if (_cts != null) _cts.Cancel(); SetStatus("Останавливаю..."); };
+            _tips.SetToolTip(_btnStop, "Отменить новые шаги операции и дождаться завершения уже выполняющихся команд");
             Theme.Danger_(_btnStop);
             top.Controls.Add(_btnStop);
             _status = new StatusChip { Width = 236, Height = 28 };
@@ -230,14 +219,14 @@ namespace RedOSPackageUpdater
             _tree.NodeMouseClick += (s, e) => { if (e.Button == MouseButtons.Right) { _tree.SelectedNode = e.Node; ShowTreeMenu(e.Node); } };
             var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 7, 0, 0), BackColor = Theme.SidebarBg };
             Theme.EdgeLine(leftButtons, DockStyle.Top);
-            var addSystem = AddCompactBtn(leftButtons, "Система", 92, () => AddSystem()); ((ModernButton)addSystem).IconName = "add";
+            var addSystem = AddCompactBtn(leftButtons, "Группа", 92, () => AddSystem()); ((ModernButton)addSystem).IconName = "add";
             var addNode = AddCompactBtn(leftButtons, "Узел", 78, () => AddNode()); ((ModernButton)addNode).IconName = "add";
             _nodeActionsMenu = new ContextMenuStrip();
             Theme.ContextMenu(_nodeActionsMenu);
             _nodeActionsMenu.Items.Add("Массовый ввод узлов", null, (s, e) => BulkNodes());
             _nodeActionsMenu.Items.Add(new ToolStripSeparator());
             _nodeActionsMenu.Items.Add("Изменить", null, (s, e) => EditSelected());
-            _nodeActionsMenu.Items.Add("Сервисы системы", null, (s, e) => EditServices());
+            _nodeActionsMenu.Items.Add("Службы перед перезагрузкой", null, (s, e) => EditServices());
             _nodeActionsMenu.Items.Add(new ToolStripSeparator());
             _nodeActionsMenu.Items.Add("Удалить", null, (s, e) => DeleteSelected());
             Button more = null;
@@ -246,7 +235,7 @@ namespace RedOSPackageUpdater
             more.AccessibleName = "Ещё действия";
             _tips.SetToolTip(more, "Ещё действия с серверами");
             var treeHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
-            _treeEmpty = new Label { Dock = DockStyle.Fill, Text = "Серверов пока нет\r\n\r\nДобавьте систему и первый узел", TextAlign = ContentAlignment.MiddleCenter, ForeColor = Theme.Muted, BackColor = Theme.Surface, Font = Theme.UiFontBodyLarge, Visible = false };
+            _treeEmpty = new Label { Dock = DockStyle.Fill, Text = "Серверов пока нет\r\n\r\nДобавьте группу серверов, затем первый сервер", TextAlign = ContentAlignment.MiddleCenter, ForeColor = Theme.Muted, BackColor = Theme.Surface, Font = Theme.UiFontBodyLarge, Visible = false };
             treeHost.Controls.Add(_tree); treeHost.Controls.Add(_treeEmpty);
             left.Controls.Add(treeHost);
             left.Controls.Add(treeHeader);
@@ -292,13 +281,13 @@ namespace RedOSPackageUpdater
             _log = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, WordWrap = false, Font = Theme.Mono, BackColor = Theme.Surface, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, HideSelection = false };
             _log.KeyDown += (s, e) => { if (e.Control && e.KeyCode == Keys.A) { _log.SelectAll(); e.Handled = true; e.SuppressKeyPress = true; } };
             var logBar = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = Theme.Bg };
-            var btnAllLogs = new ModernButton { Text = "Все узлы", Left = 0, Top = 3, Width = 90, Height = 28 };
+            var btnAllLogs = new ModernButton { Text = "Общий журнал", Left = 0, Top = 3, Width = 112, Height = 28 };
             Theme.Secondary(btnAllLogs);
             btnAllLogs.Click += (s, e) => ShowAllLogs();
-            var btnReports = new ModernButton { Text = "Папка отчётов", Left = 96, Top = 3, Width = 118, Height = 28 };
+            var btnReports = new ModernButton { Text = "Открыть отчёты", Left = 118, Top = 3, Width = 126, Height = 28 };
             Theme.Secondary(btnReports);
             btnReports.Click += (s, e) => OpenReportsFolder();
-            _logHint = new Label { Left = 224, Top = 9, Width = 520, Text = "Выберите строку результата, чтобы видеть журнал только этого узла.", ForeColor = Theme.Muted };
+            _logHint = new Label { Left = 254, Top = 9, Width = 520, Text = "Выберите строку результата, чтобы видеть журнал только этого сервера.", ForeColor = Theme.Muted };
             logBar.Controls.Add(btnAllLogs); logBar.Controls.Add(btnReports); logBar.Controls.Add(_logHint);
             _summary.SelectionChanged += (s, e) =>
             {
@@ -327,11 +316,11 @@ namespace RedOSPackageUpdater
         }
 
         // Режим "пакеты" (Установить/Обновить пакеты) выбран в списке профиля.
-        private bool IsPkgMode() { return OperationDomain.IsPackageMode(_profile.SelectedIndex, PkgInstallIndex); }
+        private OperationScenario SelectedScenario { get { return _profile.SelectedItem as OperationScenario ?? OperationScenario.All[0]; } }
+        private bool IsPkgMode() { return SelectedScenario.IsPackageOperation; }
         private string PkgAction()
         {
-            return OperationDomain.PackageAction(_profile.SelectedIndex, PkgInstallIndex, PkgRemoveIndex,
-                PkgLockIndex, PkgUnlockIndex, PkgLockListIndex);
+            return SelectedScenario.PackageAction;
         }
         // человекочитаемое имя действия для заголовков/подтверждений
         private static string ActionRu(string action)
@@ -346,7 +335,7 @@ namespace RedOSPackageUpdater
             {
                 _pkgLabel.Visible = pkg;
                 // для просмотра блокировок поле пакетов - необязательный фильтр (пусто = все)
-                _pkgLabel.Text = (_profile.SelectedIndex == PkgLockListIndex) ? "Фильтр:" : "Пакеты:";
+                _pkgLabel.Text = SelectedScenario.PackageFilterOptional ? "Фильтр (необязательно):" : "Пакеты:";
             }
             if (_pkgBox != null) _pkgBox.Visible = pkg;
             if (_noReboot != null) _noReboot.Visible = !pkg;   // для пакетов reboot не делаем

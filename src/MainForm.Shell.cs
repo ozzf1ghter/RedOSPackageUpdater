@@ -86,12 +86,13 @@ namespace RedOSPackageUpdater
             var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, FlowDirection = FlowDirection.LeftToRight,
                 Padding = new Padding(0, 6, 0, 0), BackColor = Theme.Surface };
             _btnEditSelection = AddCompactBtn(actions, "Изменить", 90, delegate { EditSelected(); });
-            _btnSystemServices = AddCompactBtn(actions, "Сервисы системы", 126, delegate { EditServices(); });
+            _btnSystemServices = AddCompactBtn(actions, "Службы перезагрузки", 156, delegate { EditServices(); });
+            _tips.SetToolTip(_btnSystemServices, "Службы, которые будут остановлены перед перезагрузкой и проверены после запуска сервера");
             var newOperation = AddCompactBtn(actions, "Новая операция", 120, delegate { ShowApplicationPage("operations"); }); Theme.Primary(newOperation);
             inventory.Controls.Add(actions); inventory.Controls.Add(_serverDetailBody); inventory.Controls.Add(_serverDetailTitle); inventory.Controls.Add(detailCaption);
             var guidance = new ModernCard { Dock = DockStyle.Top, Height = 108, BackColor = Theme.AccentTint, Padding = new Padding(18, 15, 18, 12) };
             var guidanceTitle = new Label { Dock = DockStyle.Top, Height = 24, Text = "Быстрый старт", Font = Theme.UiFontBold, ForeColor = Theme.AccentDown };
-            var guidanceText = new Label { Dock = DockStyle.Fill, Text = "1. Отметьте нужные серверы слева\r\n2. Перейдите в «Операции» или «Уязвимости ФСТЭК»\r\n3. Выполните предпроверку перед изменениями", ForeColor = Theme.Text };
+            var guidanceText = new Label { Dock = DockStyle.Fill, Text = "1. Отметьте нужные серверы слева\r\n2. Перейдите в «Операции» или «Уязвимости ФСТЭК»\r\n3. Перед установкой нажмите «Проверить изменения»", ForeColor = Theme.Text };
             guidance.Controls.Add(guidanceText); guidance.Controls.Add(guidanceTitle);
             var right = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
             right.Controls.Add(guidance); right.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 12, BackColor = Theme.Bg }); right.Controls.Add(inventory);
@@ -103,7 +104,7 @@ namespace RedOSPackageUpdater
         private Panel BuildOperationsPage(Panel operationBar, SplitContainer operationContent)
         {
             var page = NewPage();
-            var head = BuildPageHeader("Операции", "Обновление пакетов, ядра и управление версиями", "Изменить выбор", delegate { ShowApplicationPage("servers"); });
+            var head = BuildPageHeader("Операции", "Обновление пакетов, ядра и управление версиями", "Выбрать серверы", delegate { ShowApplicationPage("servers"); });
             var selectionBar = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = Theme.Surface };
             _selectionLabel = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
                 Padding = new Padding(18, 0, 0, 0), ForeColor = Theme.Muted, BackColor = Theme.Surface };
@@ -161,8 +162,8 @@ namespace RedOSPackageUpdater
             var path = new Label { Dock = DockStyle.Fill, Text = "Каталог хранения: " + Store.LogsDir, ForeColor = Theme.Muted };
             info.Controls.Add(path); info.Controls.Add(title);
             var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 62, Padding = new Padding(0, 14, 0, 0), BackColor = Theme.Bg };
-            AddCompactBtn(actions, "Последний отчёт", 124, delegate { OpenReportsFolder(); });
-            AddCompactBtn(actions, "Логи операций", 118, delegate { OpenPath(Store.LogsDir); });
+            AddCompactBtn(actions, "Открыть последний отчёт", 176, delegate { OpenLatestReport(); });
+            AddCompactBtn(actions, "Открыть журналы операций", 182, delegate { OpenPath(Store.LogsDir); });
             var kinds = new TableLayoutPanel { Dock = DockStyle.Top, Height = 138, ColumnCount = 3, Padding = new Padding(0, 12, 0, 0), BackColor = Theme.Bg };
             kinds.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F)); kinds.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F)); kinds.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
             kinds.Controls.Add(InfoCard("Предпроверки", "Состав транзакции до внесения изменений", "CSV"), 0, 0);
@@ -176,7 +177,7 @@ namespace RedOSPackageUpdater
         private Panel BuildAccessPage()
         {
             var page = NewPage();
-            var head = BuildPageHeader("Доступ и SSH", "Учётные записи, кэш подключений и доверенные ключи", "Добавить учётку", delegate { EditCredentials(); RefreshAccessPage(); }, true);
+            var head = BuildPageHeader("Доступ и SSH", "Учётные записи, кэш подключений и доверенные ключи", "Управлять учётными записями", delegate { EditCredentials(); RefreshAccessPage(); }, true);
             page.Controls.Add(head);
             var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg };
             var accounts = new ModernCard { Name = "accounts", Dock = DockStyle.Top, Height = 178, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(accounts);
@@ -186,7 +187,7 @@ namespace RedOSPackageUpdater
             var sshHint = new Label { Dock = DockStyle.Top, Height = 32, Text = "Неизвестные ключи подтверждаются оператором. Для массовой операции подтверждение может действовать на весь текущий запуск.", ForeColor = Theme.Muted };
             var sshActions = new FlowLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
             LockConfiguration(AddCompactBtn(sshActions, "Управление ключами", 146, delegate { ManageHostKeys(); }));
-            LockConfiguration(AddCompactBtn(sshActions, "Очистить кэш учёток", 154, delegate { _cache.Clear(); Store.SaveCache(_cache); SetStatus("Кэш учёток очищен"); }));
+            LockConfiguration(AddCompactBtn(sshActions, "Сбросить кэш подключений", 184, ClearCredentialCache));
             ssh.Controls.Add(sshActions); ssh.Controls.Add(sshHint); ssh.Controls.Add(sshTitle);
             content.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Theme.Bg }); content.Controls.Add(ssh); ssh.BringToFront();
             page.Controls.Add(content); content.BringToFront();
@@ -197,7 +198,7 @@ namespace RedOSPackageUpdater
         private Panel BuildSettingsPage()
         {
             var page = NewPage();
-            var head = BuildPageHeader("Настройки", "Параметры выполнения, хранения и обновления программы", "Изменить", delegate { EditSettings(); RefreshSettingsPage(); }, true);
+            var head = BuildPageHeader("Настройки", "Параметры выполнения, хранения и обновления программы", "Изменить настройки", delegate { EditSettings(); RefreshSettingsPage(); }, true);
             page.Controls.Add(head);
             var content = new Panel { Name = "settingsContent", Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 14), BackColor = Theme.Bg, AutoScroll = true };
             page.Controls.Add(content); content.BringToFront();
@@ -406,12 +407,12 @@ namespace RedOSPackageUpdater
             {
                 _serverDetailTitle.Text = string.IsNullOrEmpty(node.Name) ? node.Host : node.Name;
                 var parentSystem = selected.Parent == null ? "—" : ((SubSystem)selected.Parent.Tag).Name;
-                _serverDetailBody.Text = "Система\r\n" + parentSystem + "\r\n\r\nАдрес\r\n" + node.Host + ":" + node.Port + "\r\n\r\nРоль\r\n" + (string.IsNullOrEmpty(node.Role) ? "Не указана" : node.Role);
+                _serverDetailBody.Text = "Группа серверов\r\n" + parentSystem + "\r\n\r\nАдрес\r\n" + node.Host + ":" + node.Port + "\r\n\r\nРоль\r\n" + (string.IsNullOrEmpty(node.Role) ? "Не указана" : node.Role);
             }
             else if (system != null)
             {
                 _serverDetailTitle.Text = system.Name;
-                _serverDetailBody.Text = "Узлов: " + system.Nodes.Count + "\r\n\r\nСервисы перед перезагрузкой:\r\n" + (system.Services.Count == 0 ? "Не настроены" : string.Join(", ", system.Services.ToArray()));
+                _serverDetailBody.Text = "Серверов: " + system.Nodes.Count + "\r\n\r\nСлужбы перед перезагрузкой:\r\n" + (system.Services.Count == 0 ? "Не настроены" : string.Join(", ", system.Services.ToArray()));
             }
             else
             {
@@ -419,8 +420,8 @@ namespace RedOSPackageUpdater
                 foreach (SubSystem item in _cfg.Systems)
                     foreach (Node server in item.Nodes) { total++; if (server.Enabled) enabled++; }
                 _serverDetailTitle.Text = "Инфраструктура";
-                _serverDetailBody.Text = "Систем\r\n" + _cfg.Systems.Count + "\r\n\r\nСерверов\r\n" + total +
-                    " (доступно для операций: " + enabled + ")\r\n\r\nВыберите систему или сервер слева для подробностей.";
+                _serverDetailBody.Text = "Групп серверов\r\n" + _cfg.Systems.Count + "\r\n\r\nСерверов\r\n" + total +
+                    " (доступно для операций: " + enabled + ")\r\n\r\nВыберите группу или сервер слева для подробностей.";
             }
         }
 

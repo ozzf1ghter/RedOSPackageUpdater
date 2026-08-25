@@ -100,18 +100,18 @@ namespace RedOSPackageUpdater
             };
             if (node.Tag is Node)
             {
-                m.Items.Add("Предпроверка этого узла", null, (s, e) => RunPreviewTargets(CollectSingle(node)));
+                m.Items.Add("Проверить изменения на сервере", null, (s, e) => RunPreviewTargets(CollectSingle(node)));
                 m.Items.Add("Запустить этот узел", null, (s, e) => RunTargets(CollectSingle(node)));
                 m.Items.Add("Изменить", null, (s, e) => EditSelected());
                 m.Items.Add("Удалить", null, (s, e) => DeleteSelected());
             }
             else if (node.Tag is SubSystem)
             {
-                m.Items.Add("Предпроверка системы", null, (s, e) => RunPreviewTargets(CollectSystem(node)));
-                m.Items.Add("Запустить всю систему", null, (s, e) => RunTargets(CollectSystem(node)));
+                m.Items.Add("Проверить изменения в группе", null, (s, e) => RunPreviewTargets(CollectSystem(node)));
+                m.Items.Add("Запустить на всей группе", null, (s, e) => RunTargets(CollectSystem(node)));
                 m.Items.Add("Добавить узел", null, (s, e) => { _tree.SelectedNode = node; AddNode(); });
                 m.Items.Add("Массовый ввод узлов", null, (s, e) => { _tree.SelectedNode = node; BulkNodes(); });
-                m.Items.Add("Сервисы системы", null, (s, e) => { _tree.SelectedNode = node; EditServices(); });
+                m.Items.Add("Службы перед перезагрузкой", null, (s, e) => { _tree.SelectedNode = node; EditServices(); });
                 m.Items.Add("Переименовать", null, (s, e) => RenameSystem(node));
                 m.Items.Add("Удалить систему", null, (s, e) => DeleteSelected());
             }
@@ -131,7 +131,7 @@ namespace RedOSPackageUpdater
         private void AddSystem()
         {
             if (!CanEditConfiguration()) return;
-            string name = Prompt.Show("Новая система", "Название подсистемы:", "", false, new Size(360, 130));
+            string name = Prompt.Show("Новая группа серверов", "Название группы:", "", false, new Size(360, 130));
             if (string.IsNullOrEmpty(name)) return;
             _cfg.Systems.Add(new SubSystem { Name = name.Trim() });
             Store.SaveConfig(_cfg); RebuildTree();
@@ -147,7 +147,7 @@ namespace RedOSPackageUpdater
         {
             if (!CanEditConfiguration()) return;
             var sys = CurrentSystem();
-            if (sys == null) { AppDialog.Info(this, "Серверы", "Сначала выберите систему."); return; }
+            if (sys == null) { AppDialog.Info(this, "Не выбрана группа", "Сначала выберите группу серверов слева."); return; }
             using (var f = new NodeForm(null))
                 if (f.ShowDialog(this) == DialogResult.OK) { sys.Nodes.Add(f.Result); Store.SaveConfig(_cfg); RebuildTree(); }
         }
@@ -155,7 +155,7 @@ namespace RedOSPackageUpdater
         {
             if (!CanEditConfiguration()) return;
             var sys = CurrentSystem();
-            if (sys == null) { AppDialog.Info(this, "Серверы", "Сначала выберите систему."); return; }
+            if (sys == null) { AppDialog.Info(this, "Не выбрана группа", "Сначала выберите группу серверов слева."); return; }
             using (var f = new BulkNodesForm())
                 if (f.ShowDialog(this) == DialogResult.OK && f.Result != null && f.Result.Count > 0)
                 {
@@ -193,7 +193,7 @@ namespace RedOSPackageUpdater
             }
             else if (n.Tag is SubSystem)
             {
-                if (AppDialog.Confirm(this, "Удаление системы", "Удалить систему «" + ((SubSystem)n.Tag).Name + "» со всеми узлами?", "Удалить"))
+                if (AppDialog.Confirm(this, "Удаление группы серверов", "Удалить группу «" + ((SubSystem)n.Tag).Name + "» и все записи серверов в ней? Серверы и данные на них затронуты не будут.", "Удалить группу"))
                 { _cfg.Systems.Remove((SubSystem)n.Tag); Store.SaveConfig(_cfg); RebuildTree(); }
             }
         }
@@ -201,15 +201,17 @@ namespace RedOSPackageUpdater
         {
             if (!CanEditConfiguration()) return;
             var sys = CurrentSystem();
-            if (sys == null) { AppDialog.Info(this, "Серверы", "Сначала выберите систему."); return; }
+            if (sys == null) { AppDialog.Info(this, "Не выбрана группа", "Сначала выберите группу серверов слева."); return; }
             string cur = string.Join(Environment.NewLine, sys.Services.ToArray());
-            string txt = Prompt.Show("Сервисы перед перезагрузкой", "Маски сервисов — по одной на строку, например postgresql* или patroni:", cur, true, new Size(460, 300));
+            string txt = Prompt.Show("Службы перед перезагрузкой",
+                "Эти службы будут остановлены перед перезагрузкой и проверены после запуска.\r\n\r\nУкажите имена или маски systemd — по одной на строку, например postgresql* или patroni:",
+                cur, true, new Size(520, 350));
             if (txt == null) return;
             sys.Services = new List<string>();
             foreach (var line in txt.Replace("\r", "").Split('\n'))
             { var t = line.Trim(); if (t.Length > 0) sys.Services.Add(t); }
             Store.SaveConfig(_cfg);
-            SetStatus("Сервисы системы обновлены");
+            SetStatus("Список служб перед перезагрузкой обновлён");
         }
         private void CheckAll(bool val)
         {
@@ -238,6 +240,21 @@ namespace RedOSPackageUpdater
             using (var f = new CredentialsForm(_cfg.Credentials))
                 if (f.ShowDialog(this) == DialogResult.OK && f.Result != null)
                 { _cfg.Credentials = f.Result; Store.SaveConfig(_cfg); SetStatus("Учёток в пуле: " + _cfg.Credentials.Count); }
+        }
+
+        private void ClearCredentialCache()
+        {
+            if (!CanEditConfiguration()) return;
+            if (_cache == null || _cache.Count == 0)
+            {
+                AppDialog.Info(this, "Кэш подключений пуст", "Сохранённых соответствий серверов и учётных записей нет.");
+                return;
+            }
+            if (!AppDialog.Confirm(this, "Сброс кэша подключений",
+                "Программа забудет, какая учётная запись подошла каждому серверу. Сами учётные записи и пароли удалены не будут.\r\n\r\nПри следующем подключении программа снова переберёт доступные учётные записи.", "Сбросить")) return;
+            _cache.Clear();
+            Store.SaveCache(_cache);
+            SetStatus("Кэш подключений сброшен");
         }
         private void EditSettings()
         {
@@ -434,23 +451,13 @@ namespace RedOSPackageUpdater
 
         private string SelectedProfileResource()
         {
-            switch (_profile.SelectedIndex)
-            {
-                case 1: return Profiles.SecurityOnly;
-                case 2: return Profiles.KernelOnly;
-                default: return Profiles.KernelSecurity;
-            }
+            return SelectedScenario.ProfileResource ?? Profiles.KernelSecurity;
         }
 
         // Ключ профиля для скрипта предпроверки (чтобы dry-run считал ту же транзакцию, что и боевой прогон).
         private string SelectedProfileKey()
         {
-            switch (_profile.SelectedIndex)
-            {
-                case 1: return "security_only";
-                case 2: return "kernel_only";
-                default: return "kernel_security";
-            }
+            return SelectedScenario.ProfileKey ?? "kernel_security";
         }
 
         // Очистить лог/сводку и создать строки под цели.

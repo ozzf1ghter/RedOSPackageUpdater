@@ -136,6 +136,15 @@ $actionSurfacesAreExplicit = $shell -match 'var actions = new FlowLayoutPanel[\s
     $shell -match 'var launchButtons = new FlowLayoutPanel[\s\S]{0,180}BackColor = Theme\.Surface' -and
     $shell -match 'var sshActions = new FlowLayoutPanel[\s\S]{0,120}BackColor = Theme\.Surface'
 Assert-Ui $actionSurfacesAreExplicit 'button containers use explicit design-system surfaces'
+$scenarioSource = [IO.File]::ReadAllText((Join-Path $project 'src\OperationScenario.cs'))
+$typedScenarios = $scenarioSource -match 'enum OperationScenarioKind' -and $main -match 'SelectedScenario' -and
+    $main -notmatch 'PkgInstallIndex' -and $main -notmatch 'PkgLockListIndex'
+Assert-Ui $typedScenarios 'operation behavior is bound to typed scenarios rather than combo indexes'
+$clearTerminology = $main -notmatch 'Сервисы системы' -and $shell -notmatch 'Сервисы системы' -and
+    $shell -match 'Службы перезагрузки' -and $main -match 'Проверить изменения'
+Assert-Ui $clearTerminology 'ambiguous service and preflight actions use operator-facing names'
+$latestReportWorks = $shell -match 'OpenLatestReport\(\)' -and $main -match 'GetFiles\(pattern, SearchOption\.AllDirectories\)'
+Assert-Ui $latestReportWorks 'latest report action opens a real newest report file'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')

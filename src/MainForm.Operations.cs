@@ -207,19 +207,19 @@ namespace RedOSPackageUpdater
             string previewScript = Profiles.Read(Profiles.Preview);
             string profileKey = SelectedProfileKey();
 
-            ResetSummary(targets, "Предпроверка (реальная транзакция профиля). Клик по строке — лог узла.");
+            ResetSummary(targets, "Проверка изменений: реальная транзакция DNF без установки. Выберите строку для журнала сервера.");
             var orch = NewOrchestrator(true);
             orch.OnPreviewStart = host => Ui(() => SetRowPhase(host, "preview"));
             orch.OnPreviewDone = hp => Ui(() => UpdatePreviewRow(hp));
 
-            StartOperation("Предпроверка на " + targets.Count + " узлах...", token =>
+            StartOperation("Проверка изменений на " + targets.Count + " серверах...", token =>
             {
                 var res = orch.RunPreview(targets, previewScript, excl, profileKey, _cfg.Settings, logDir, token);
                 res = OrderLikeTargets(res, targets, h => h.Host);   // порядок как в дереве, не по завершению
                 Ui(() =>
                 {
                     int totW = 0, totS = 0, totD = 0; foreach (var h in res) { totW += h.Total; totS += h.Sec; totD += h.Dep; }
-                    SetStatus(string.Format("Предпроверка готова: в транзакции {0} (advisory {1}, завис. {2})", totW, totS, totD));
+                    SetStatus(string.Format("Проверка завершена: пакетов в транзакции {0} (бюллетени {1}, зависимости {2})", totW, totS, totD));
                     if (res.Count > 0)
                     {
                         string html = null, xls = null;
@@ -293,6 +293,25 @@ namespace RedOSPackageUpdater
             string dir = (!string.IsNullOrEmpty(_lastReportDir) && Directory.Exists(_lastReportDir)) ? _lastReportDir : Store.LogsDir;
             try { Directory.CreateDirectory(dir); Process.Start(dir); }
             catch (Exception ex) { AppDialog.Error(this, "Не удалось открыть папку", ex.Message); }
+        }
+
+        private void OpenLatestReport()
+        {
+            try
+            {
+                Store.EnsureDirs();
+                string[] patterns = { "*.html", "*.htm", "*.xlsx", "*.csv", "*.log" };
+                var root = new DirectoryInfo(Store.LogsDir);
+                FileInfo latest = patterns.SelectMany(pattern => root.GetFiles(pattern, SearchOption.AllDirectories))
+                    .OrderByDescending(file => file.LastWriteTimeUtc).FirstOrDefault();
+                if (latest == null)
+                {
+                    AppDialog.Info(this, "Отчётов пока нет", "Сначала выполните проверку изменений, операцию или проверку уязвимостей.");
+                    return;
+                }
+                OpenPath(latest.FullName);
+            }
+            catch (Exception ex) { AppDialog.Error(this, "Не удалось открыть последний отчёт", ex.Message); }
         }
 
         private void UpdatePreviewRow(HostPreview hp)

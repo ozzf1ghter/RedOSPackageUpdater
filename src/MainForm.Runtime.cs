@@ -69,7 +69,7 @@ namespace RedOSPackageUpdater
         private void ShowHostLog(string host)
         {
             _selectedHost = host;
-            if (_logHint != null) _logHint.Text = "Лог узла: " + HostLabel(host) + "   (кнопка «Все узлы» — общий вид)";
+            if (_logHint != null) _logHint.Text = "Журнал сервера: " + HostLabel(host) + "   («Общий журнал» показывает все серверы)";
             string text;
             lock (_logLock) { StringBuilder sb; text = _hostLogs.TryGetValue(host, out sb) ? sb.ToString() : ""; }
             _log.Text = text;
@@ -78,7 +78,7 @@ namespace RedOSPackageUpdater
         private void ShowAllLogs()
         {
             _selectedHost = null;
-            if (_logHint != null) _logHint.Text = "Лог: все узлы. Клик по строке сводки — только её лог.";
+            if (_logHint != null) _logHint.Text = "Общий журнал всех серверов. Выберите строку результата для журнала одного сервера.";
             var sb = new StringBuilder();
             lock (_logLock)
                 foreach (var kv in _hostLogs)
