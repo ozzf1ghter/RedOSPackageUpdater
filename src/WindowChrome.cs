@@ -34,9 +34,8 @@ namespace RedOSPackageUpdater
             Color fg = _active ? Theme.Text : Theme.Muted;
             e.Graphics.Clear(bg);
             using (var line = new Pen(Theme.Border)) e.Graphics.DrawLine(line,0,Height-1,Width,Height-1);
-            // Рисуем готовый оптический кадр 20x20 пиксель-в-пиксель: масштабирование 24->22
-            // размывало тонкие белые элементы знака на реальном DPI.
-            AppIcons.DrawMark(e.Graphics,new Rectangle(13,9,20,20),Theme.Accent,Color.White);
+            // Оптический системный кадр 16x16 без масштабирования.
+            AppIcons.DrawMark(e.Graphics,new Rectangle(14,11,16,16),Theme.Accent,Color.White);
             TextRenderer.DrawText(e.Graphics,"RED OS Package Updater",Theme.UiFontBold,new Rectangle(43,2,Math.Max(0,Width-190),Height-3),fg,
                 TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix|TextFormatFlags.SingleLine);
             for (int i=0;i<3;i++) DrawWindowButton(e.Graphics,i,ButtonRect(i),fg,bg);

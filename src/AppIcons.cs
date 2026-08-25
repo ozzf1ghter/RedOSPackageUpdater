@@ -119,6 +119,6 @@ namespace RedOSPackageUpdater
     internal sealed class AppIconView : Control
     {
         public AppIconView() { SetStyle(ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.UserPaint|ControlStyles.ResizeRedraw,true); }
-        protected override void OnPaint(PaintEventArgs e) { base.OnPaint(e); AppIcons.DrawMark(e.Graphics,new Rectangle(0,0,Math.Max(1,Width-1),Math.Max(1,Height-1)),Theme.Accent,Color.White); }
+        protected override void OnPaint(PaintEventArgs e) { base.OnPaint(e); AppIcons.DrawMark(e.Graphics,new Rectangle(0,0,Math.Max(1,Width),Math.Max(1,Height)),Theme.Accent,Color.White); }
     }
 }

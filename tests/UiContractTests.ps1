@@ -93,14 +93,18 @@ $noTopStripe = $chrome -notmatch 'FillRectangle\(accent,\s*0,\s*0,\s*Width,\s*2\
 Assert-Ui $noTopStripe 'title bar has no decorative top stripe'
 $textBoxesKeepCompleteBorders = $controls -match 'class ModernTextBox : UserControl' -and
     $controls -match 'BorderStyle = BorderStyle\.None' -and
-    $controls -match '\(Height - editorHeight\) / 2'
-Assert-Ui $textBoxesKeepCompleteBorders 'native text boxes keep complete corner borders'
+    $controls -match '\(Height - editorHeight\) / 2' -and
+    $controls -match 'ModernButton\.Rounded\(bounds, 6\)'
+Assert-Ui $textBoxesKeepCompleteBorders 'text boxes keep complete rounded borders'
 $compactServerActions = $main -notmatch 'var bulkNodes' -and
     $main -match 'AddCompactBtn\(leftButtons, [^,]+, 72'
 Assert-Ui $compactServerActions 'server action bar fits its minimum width'
 $comboHasCompleteChrome = $controls -match 'class ModernComboBox[\s\S]*?DrawChrome' -and
-    $controls -match 'Graphics\.FromHwnd\(Handle\)'
-Assert-Ui $comboHasCompleteChrome 'combo boxes draw one complete border and dropdown button'
+    $controls -match 'Graphics\.FromHwnd\(Handle\)' -and $controls -match 'corners\.Exclude\(path\)'
+Assert-Ui $comboHasCompleteChrome 'combo boxes draw rounded chrome and dropdown button'
+$transparentIconPipeline = $chrome -match 'new Rectangle\(14,11,16,16\)' -and
+    ([IO.File]::ReadAllText((Join-Path $project 'tools\Extract-ApprovedIcon.ps1'))) -match 'Clear-ConnectedBoardBackground'
+Assert-Ui $transparentIconPipeline 'icon pipeline removes board corners and uses an exact title-bar frame'
 $uniformPageHeaders = $shell -match 'const int headerHeight = 78' -and
     $shell -match 'const int actionWidth = 146' -and $shell -match 'const int actionHeight = 40' -and
     $shell -notmatch 'head\.Height = 72'

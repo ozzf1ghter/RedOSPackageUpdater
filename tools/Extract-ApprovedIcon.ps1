@@ -34,6 +34,24 @@ function Find-TileBounds($region) {
     New-Object Drawing.Rectangle $minX,$minY,($maxX-$minX+1),($maxY-$minY+1)
 }
 
+# Удаляет только светлый нейтральный фон, связанный с краями изображения. Белые элементы
+# монограммы находятся внутри синей плитки и до краёв не связаны, поэтому сохраняются.
+function Clear-ConnectedBoardBackground([Drawing.Bitmap]$bitmap) {
+    $w=$bitmap.Width;$h=$bitmap.Height;$seen=New-Object bool[] ($w*$h)
+    $queue=New-Object 'Collections.Generic.Queue[int]'
+    function Is-BoardPixel([Drawing.Color]$c) {
+        $max=[Math]::Max($c.R,[Math]::Max($c.G,$c.B));$min=[Math]::Min($c.R,[Math]::Min($c.G,$c.B))
+        return $min-ge 180 -and ($max-$min)-le 38
+    }
+    for($x=0;$x-lt $w;$x++){$queue.Enqueue($x);$queue.Enqueue(($h-1)*$w+$x)}
+    for($y=1;$y-lt $h-1;$y++){$queue.Enqueue($y*$w);$queue.Enqueue($y*$w+$w-1)}
+    while($queue.Count-gt 0){$i=$queue.Dequeue();if($seen[$i]){continue};$seen[$i]=$true;$x=$i%$w;$y=[Math]::Floor($i/$w)
+        if(-not(Is-BoardPixel $bitmap.GetPixel($x,$y))){continue}
+        $bitmap.SetPixel($x,$y,[Drawing.Color]::FromArgb(0,0,0,0))
+        if($x-gt 0){$queue.Enqueue($i-1)};if($x-lt $w-1){$queue.Enqueue($i+1)};if($y-gt 0){$queue.Enqueue($i-$w)};if($y-lt $h-1){$queue.Enqueue($i+$w)}
+    }
+}
+
 $pngs=@()
 try {
     foreach($region in $regions) {
@@ -46,53 +64,14 @@ try {
             $g.InterpolationMode = if($size -le 24){[Drawing.Drawing2D.InterpolationMode]::NearestNeighbor}else{[Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic}
             $g.PixelOffsetMode=[Drawing.Drawing2D.PixelOffsetMode]::HighQuality
             $g.DrawImage($source,(New-Object Drawing.Rectangle 0,0,$size,$size),$bounds,[Drawing.GraphicsUnit]::Pixel)
+            Clear-ConnectedBoardBackground $bitmap
             $path=Join-Path $assetDir ("app-icon-{0}.png" -f $size)
             $bitmap.Save($path,[Drawing.Imaging.ImageFormat]::Png); $pngs+=@{Size=$size;Path=$path}
         } finally {$g.Dispose();$bitmap.Dispose()}
     }
 } finally {$source.Dispose()}
 
-# ICO с классическими DIB-кадрами. PNG внутри ICO не поддерживается старыми оболочками
-# Windows Server/классической панелью задач: они показывают стандартную иконку WinForms.
-function Convert-PngToIconDib($item) {
-    $bitmap=[Drawing.Bitmap]::FromFile($item.Path)
-    $memory=New-Object IO.MemoryStream
-    $dibWriter=New-Object IO.BinaryWriter $memory
-    try {
-        $width=[int]$item.Size; $height=[int]$item.Size
-        $xorSize=$width*$height*4
-        $maskStride=[int]([Math]::Ceiling($width/32.0)*4)
-        $dibWriter.Write([uint32]40); $dibWriter.Write([int32]$width); $dibWriter.Write([int32]($height*2))
-        $dibWriter.Write([uint16]1); $dibWriter.Write([uint16]32); $dibWriter.Write([uint32]0)
-        $dibWriter.Write([uint32]$xorSize); $dibWriter.Write([int32]0); $dibWriter.Write([int32]0)
-        $dibWriter.Write([uint32]0); $dibWriter.Write([uint32]0)
-        for($y=$height-1;$y-ge 0;$y--){for($x=0;$x-lt $width;$x++){
-            $c=$bitmap.GetPixel($x,$y); $dibWriter.Write([byte]$c.B); $dibWriter.Write([byte]$c.G)
-            $dibWriter.Write([byte]$c.R); $dibWriter.Write([byte]$c.A)
-        }}
-        for($y=$height-1;$y-ge 0;$y--){
-            $row=New-Object byte[] $maskStride
-            for($x=0;$x-lt $width;$x++){if($bitmap.GetPixel($x,$y).A-lt 128){$row[[int]($x/8)] = $row[[int]($x/8)] -bor (0x80-shr($x%8))}}
-            $dibWriter.Write($row)
-        }
-        $dibWriter.Flush(); return $memory.ToArray()
-    } finally {$dibWriter.Dispose();$memory.Dispose();$bitmap.Dispose()}
-}
-
 $ico=Join-Path $Project 'icon.ico'
-# .NET Framework csc использует старый Win32 resource compiler и отвергает 256px DIB.
-# Большой вариант остаётся отдельным PNG-ресурсом для About/UI; системному значку достаточно 16-64px.
-$icoFrames=@($pngs|Where-Object{$_.Size-lt 256})
-# Унарная запятая запрещает PowerShell разворачивать byte[] каждого кадра в поток отдельных
-# byte. Без неё таблица ICO получала размер кадра 1 байт, и csc молча ставил стандартный значок.
-$images=@($icoFrames|ForEach-Object{ ,(Convert-PngToIconDib $_) })
-$stream=[IO.File]::Open($ico,[IO.FileMode]::Create);$writer=New-Object IO.BinaryWriter $stream
-try {
-    $writer.Write([uint16]0);$writer.Write([uint16]1);$writer.Write([uint16]$icoFrames.Count);$offset=6+16*$icoFrames.Count
-    for($i=0;$i -lt $icoFrames.Count;$i++){$v=$icoFrames[$i].Size;$writer.Write([byte]$v);$writer.Write([byte]$v);$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$images[$i].Length);$writer.Write([uint32]$offset);$offset+=$images[$i].Length}
-    foreach($bytes in $images){$writer.Write($bytes)}
-} finally {$writer.Dispose();$stream.Dispose()}
-
 # Win32 resource compiler из .NET Framework 4.x получает классический 24-bit DIB + AND-mask.
 # GetHicon/Icon.Save здесь использовать нельзя: на классической теме он теряет alpha,
 # превращает синий в бирюзовый и показывает RGB прозрачных углов как белые стрелки.
@@ -109,6 +88,6 @@ try {
     $systemWriter.Write([uint32]($xorStride*$h));$systemWriter.Write([int32]0);$systemWriter.Write([int32]0)
     $systemWriter.Write([uint32]0);$systemWriter.Write([uint32]0)
     for($y=$h-1;$y-ge 0;$y--){for($x=0;$x-lt $w;$x++){$c=$systemBitmap.GetPixel($x,$y);$systemWriter.Write([byte]$c.B);$systemWriter.Write([byte]$c.G);$systemWriter.Write([byte]$c.R)}}
-    for($y=$h-1;$y-ge 0;$y--){$mask=New-Object byte[] $maskStride;for($x=0;$x-lt $w;$x++){if($systemBitmap.GetPixel($x,$y).A-lt 128){$mask[[int]($x/8)]=$mask[[int]($x/8)]-bor(0x80-shr($x%8))}};$systemWriter.Write($mask)}
+    for($y=$h-1;$y-ge 0;$y--){$mask=New-Object byte[] $maskStride;for($x=0;$x-lt $w;$x++){if($systemBitmap.GetPixel($x,$y).A-lt 128){$byteIndex=[Math]::Floor($x/8);$mask[$byteIndex]=$mask[$byteIndex]-bor(0x80-shr($x%8))}};$systemWriter.Write($mask)}
 } finally {$systemWriter.Dispose();$systemStream.Dispose();$systemBitmap.Dispose()}
 Write-Host "Extracted approved optical icon sizes: $($pngs.Size -join ', ') px"

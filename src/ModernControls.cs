@@ -319,11 +319,22 @@ namespace RedOSPackageUpdater
         protected override void OnForeColorChanged(EventArgs e) { base.OnForeColorChanged(e); if (_editor != null) _editor.ForeColor = ForeColor; }
         protected override void OnBackColorChanged(EventArgs e) { base.OnBackColorChanged(e); if (_editor != null) _editor.BackColor = BackColor; if (_placeholderLabel != null) _placeholderLabel.BackColor = BackColor; }
         protected override void OnClick(EventArgs e) { base.OnClick(e); _editor.Focus(); }
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var outside = new SolidBrush(Parent == null ? Theme.Bg : Parent.BackColor))
+                e.Graphics.FillRectangle(outside, ClientRectangle);
+            var bounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
+            using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, path);
+        }
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var bounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
             using (var pen = new Pen(_editor.Focused ? Theme.Accent : Theme.Border))
-                e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+                e.Graphics.DrawPath(pen, path);
         }
         private void ApplyPlaceholder() { UpdatePlaceholder(); }
         private void UpdatePlaceholder()
@@ -408,16 +419,27 @@ namespace RedOSPackageUpdater
         {
             using (Graphics g = Graphics.FromHwnd(Handle))
             {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var bounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+                using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
+                {
+                    using (var outside = new SolidBrush(Parent == null ? Theme.Bg : Parent.BackColor))
+                    using (var corners = new Region(ClientRectangle))
+                    {
+                        corners.Exclude(path);
+                        g.FillRegion(outside, corners);
+                    }
+                }
                 int buttonWidth = Math.Max(22, Height - 2);
                 var button = new Rectangle(Math.Max(1, Width - buttonWidth - 1), 1,
                     Math.Max(1, buttonWidth), Math.Max(1, Height - 2));
                 using (var fill = new SolidBrush(Enabled ? BackColor : Theme.HeaderBg)) g.FillRectangle(fill, button);
-                using (var border = new Pen(Focused ? Theme.Accent : Theme.Border))
-                    g.DrawRectangle(border, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
                 int cx = button.Left + button.Width / 2;
                 int cy = button.Top + button.Height / 2;
                 Point[] arrow = { new Point(cx - 4, cy - 2), new Point(cx + 4, cy - 2), new Point(cx, cy + 3) };
                 using (var brush = new SolidBrush(Enabled ? Theme.Muted : Theme.Disabled)) g.FillPolygon(brush, arrow);
+                using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
+                using (var border = new Pen(Focused ? Theme.Accent : Theme.Border)) g.DrawPath(border, path);
             }
         }
         protected override void OnDrawItem(DrawItemEventArgs e)

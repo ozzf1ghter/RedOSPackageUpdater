@@ -22,7 +22,7 @@ namespace RedOSPackageUpdater
 
             var navigation = new Panel { Dock = DockStyle.Left, Width = 214, BackColor = Theme.NavigationBg, Padding = new Padding(12, 12, 12, 12) };
             var brand = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = Theme.NavigationBg };
-            var brandMark = new AppIconView { Left = 4, Top = 4, Width = 36, Height = 36, BackColor = Theme.NavigationBg };
+            var brandMark = new AppIconView { Left = 6, Top = 6, Width = 32, Height = 32, BackColor = Theme.NavigationBg };
             var brandName = new Label { Left = 50, Top = 4, Width = 138, Height = 23, Text = "RED OS UPDATER", ForeColor = Color.White, Font = Theme.UiFontBrand };
             var brandSub = new Label { Left = 50, Top = 27, Width = 138, Height = 19, Text = "Центр управления", ForeColor = Theme.NavigationText, Font = Theme.UiFontBrandSmall };
             var navCaption = new Label { Left = 4, Top = 54, Width = 184, Height = 18, Text = "РАЗДЕЛЫ", ForeColor = Color.FromArgb(124, 142, 169), Font = Theme.UiFontSmall };
