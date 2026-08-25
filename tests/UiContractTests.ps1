@@ -94,6 +94,9 @@ Assert-Ui $noTopStripe 'title bar has no decorative top stripe'
 $textBoxesKeepCompleteBorders = $controls -match 'class ModernTextBox[\s\S]*?ApplyMargins' -and
     $controls -match 'if \(Region != null\)'
 Assert-Ui $textBoxesKeepCompleteBorders 'native text boxes keep complete corner borders'
+$compactServerActions = $main -notmatch 'var bulkNodes' -and
+    $main -match 'AddCompactBtn\(leftButtons, [^,]+, 72'
+Assert-Ui $compactServerActions 'server action bar fits its minimum width'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')

@@ -230,15 +230,16 @@ namespace RedOSPackageUpdater
             Theme.EdgeLine(leftButtons, DockStyle.Top);
             var addSystem = AddCompactBtn(leftButtons, "Система", 92, () => AddSystem()); ((ModernButton)addSystem).IconName = "add";
             var addNode = AddCompactBtn(leftButtons, "Узел", 78, () => AddNode()); ((ModernButton)addNode).IconName = "add";
-            var bulkNodes = AddCompactBtn(leftButtons, "Массово", 90, () => BulkNodes()); ((ModernButton)bulkNodes).IconName = "servers";
             _nodeActionsMenu = new ContextMenuStrip();
             Theme.ContextMenu(_nodeActionsMenu);
+            _nodeActionsMenu.Items.Add("Массовый ввод узлов", null, (s, e) => BulkNodes());
+            _nodeActionsMenu.Items.Add(new ToolStripSeparator());
             _nodeActionsMenu.Items.Add("Изменить", null, (s, e) => EditSelected());
             _nodeActionsMenu.Items.Add("Сервисы системы", null, (s, e) => EditServices());
             _nodeActionsMenu.Items.Add(new ToolStripSeparator());
             _nodeActionsMenu.Items.Add("Удалить", null, (s, e) => DeleteSelected());
             Button more = null;
-            more = AddCompactBtn(leftButtons, "", 40, delegate { _nodeActionsMenu.Show(more, new Point(0, more.Height)); });
+            more = AddCompactBtn(leftButtons, "Ещё", 72, delegate { _nodeActionsMenu.Show(more, new Point(0, more.Height)); });
             ((ModernButton)more).IconName = "more";
             more.AccessibleName = "Ещё действия";
             _tips.SetToolTip(more, "Ещё действия с серверами");
