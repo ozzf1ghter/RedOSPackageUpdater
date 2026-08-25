@@ -25,14 +25,35 @@ namespace RedOSPackageUpdater
         private const string Repo = "RedOSPackageUpdater";
         public static UpdateInfo Check()
         {
-            // Один запрос к raw достаточно надёжен и заметно быстрее трёх
-            // последовательных обращений к GitHub API. Возможная гонка во время
-            // публикации безопасна: загруженный EXE обязательно сверяется с SHA-256
-            // из манифеста и при несовпадении не устанавливается.
+            string revision = ResolvePublishedRevision();
             UpdateInfo latest = ParseManifest(ReadTextWithRetry(
-                "https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/main/update.json"));
-            latest.CommitSha = "main";
+                BuildRawUrl(revision, "update.json", DateTime.UtcNow.Ticks.ToString())));
+            latest.CommitSha = revision;
             return latest;
+        }
+
+        private static string ResolvePublishedRevision()
+        {
+            try
+            {
+                string url = "https://api.github.com/repos/" + Owner + "/" + Repo +
+                    "/commits/main?r=" + DateTime.UtcNow.Ticks;
+                var json = WebRequests.ReadUtf8(WebRequests.Create(url, 5000));
+                var data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                string sha = data != null && data.ContainsKey("sha") ? Convert.ToString(data["sha"]) : "";
+                if (IsGitSha(sha)) return sha;
+            }
+            catch (WebException) { }
+            catch (InvalidOperationException) { }
+            return "main";
+        }
+
+        internal static string BuildRawUrl(string revision, string fileName, string cacheKey)
+        {
+            if (!IsGitSha(revision) && !string.Equals(revision, "main", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Некорректная ревизия обновления");
+            return "https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/" + revision + "/" +
+                fileName + "?r=" + Uri.EscapeDataString(cacheKey ?? "");
         }
 
         private static UpdateInfo ParseManifest(string manifest)
@@ -62,7 +83,7 @@ namespace RedOSPackageUpdater
             {
                 actual = WebRequests.Retry(() =>
                 {
-                    var req = WebRequests.Create("https://raw.githubusercontent.com/" + Owner + "/" + Repo + "/" + info.CommitSha + "/RedOSPackageUpdater.exe", 30000);
+                    var req = WebRequests.Create(BuildRawUrl(info.CommitSha, "RedOSPackageUpdater.exe", info.Sha256), 30000);
                     req.ReadWriteTimeout = 60000;
                     using (var resp = (HttpWebResponse)req.GetResponse())
                     using (var input = resp.GetResponseStream())

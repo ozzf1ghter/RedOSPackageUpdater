@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Cache;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -144,6 +145,8 @@ namespace RedOSPackageUpdater
             request.Timeout = timeoutMs;
             request.ReadWriteTimeout = Math.Max(timeoutMs, 30000);
             request.AllowAutoRedirect = true;
+            request.CachePolicy = new HttpRequestCachePolicy(HttpRequestCacheLevel.NoCacheNoStore);
+            request.Headers[HttpRequestHeader.Pragma] = "no-cache";
             return request;
         }
 

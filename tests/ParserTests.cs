@@ -163,6 +163,8 @@ internal static class ParserTests
         Check(UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "bb", "aa"), "обновлённая сборка той же версии обнаруживается по SHA-256");
         Check(!UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "AA", "aa"), "та же сборка повторно не скачивается");
         Check(AppUpdater.IsSha256(new string('a', 64)) && !AppUpdater.IsSha256(new string('z', 64)), "манифест принимает только шестнадцатеричный SHA-256");
+        Check(AppUpdater.BuildRawUrl("main", "update.json", "abc").EndsWith("/main/update.json?r=abc"), "URL манифеста обходит HTTP-кеш");
+        Check(AppUpdater.BuildRawUrl(new string('a', 40), "RedOSPackageUpdater.exe", "def").Contains("/" + new string('a', 40) + "/RedOSPackageUpdater.exe?r=def"), "EXE скачивается из закреплённого коммита");
         Check(AppUpdater.BatchLiteral(@"C:\100%\app.exe") == @"C:\100%%\app.exe", "путь обновления безопасен для batch-переменных");
         foreach (int width in new[] { 720, 766, 929, 959, 960, 1100 })
         {
