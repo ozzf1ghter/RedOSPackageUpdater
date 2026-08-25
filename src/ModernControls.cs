@@ -285,7 +285,6 @@ namespace RedOSPackageUpdater
         private const int EmSetCueBanner = 0x1501;
         private const int EmSetMargins = 0x00D3;
         private readonly TextBox _editor;
-        private readonly Label _placeholderLabel;
         private string _placeholder = "";
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
         [DllImport("user32.dll", EntryPoint = "SendMessageW")] private static extern IntPtr SendMessagePtr(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -304,44 +303,46 @@ namespace RedOSPackageUpdater
                 ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             _editor = new TextBox { BorderStyle = BorderStyle.None, BackColor = Theme.Surface,
                 ForeColor = Theme.Text, Font = Theme.UiFont };
-            _placeholderLabel = new Label { BackColor = Theme.Surface, ForeColor = Theme.Muted,
-                TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.IBeam };
-            _placeholderLabel.Click += delegate { _editor.Focus(); };
             _editor.TextChanged += delegate { base.Text = _editor.Text; UpdatePlaceholder(); };
             _editor.Enter += delegate { UpdatePlaceholder(); Invalidate(); };
             _editor.Leave += delegate { UpdatePlaceholder(); Invalidate(); };
             Controls.Add(_editor);
-            Controls.Add(_placeholderLabel); _placeholderLabel.BringToFront();
         }
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyPlaceholder(); LayoutEditor(); }
         protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutEditor(); }
         protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); if (_editor != null) { _editor.Font = Font; LayoutEditor(); } }
         protected override void OnForeColorChanged(EventArgs e) { base.OnForeColorChanged(e); if (_editor != null) _editor.ForeColor = ForeColor; }
-        protected override void OnBackColorChanged(EventArgs e) { base.OnBackColorChanged(e); if (_editor != null) _editor.BackColor = BackColor; if (_placeholderLabel != null) _placeholderLabel.BackColor = BackColor; }
+        protected override void OnBackColorChanged(EventArgs e) { base.OnBackColorChanged(e); if (_editor != null) _editor.BackColor = BackColor; }
         protected override void OnClick(EventArgs e) { base.OnClick(e); _editor.Focus(); }
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (var outside = new SolidBrush(Parent == null ? Theme.Bg : Parent.BackColor))
                 e.Graphics.FillRectangle(outside, ClientRectangle);
-            var bounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            var bounds = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
             using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
             using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, path);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            var bounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            var bounds = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
             using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
             using (var pen = new Pen(_editor.Focused ? Theme.Accent : Theme.Border))
                 e.Graphics.DrawPath(pen, path);
+            if (_placeholder.Length > 0 && _editor.TextLength == 0 && !_editor.Focused)
+            {
+                var placeholderBounds = new Rectangle(8, -1, Math.Max(1, Width - 16), Height + 1);
+                TextRenderer.DrawText(e.Graphics, _placeholder, Font, placeholderBounds, Theme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            }
         }
         private void ApplyPlaceholder() { UpdatePlaceholder(); }
         private void UpdatePlaceholder()
         {
-            if (_placeholderLabel == null || _editor == null) return;
-            _placeholderLabel.Text = _placeholder;
-            _placeholderLabel.Visible = _placeholder.Length > 0 && _editor.TextLength == 0 && !_editor.Focused;
+            if (_editor == null) return;
+            Invalidate();
         }
         private void LayoutEditor()
         {
@@ -354,9 +355,6 @@ namespace RedOSPackageUpdater
                 _editor.SetBounds(horizontalPadding, Math.Max(1, (Height - editorHeight) / 2 - 1),
                     Math.Max(1, Width - horizontalPadding * 2), editorHeight);
             }
-            // Не перекрываем дочерним Label рамку родительского контрола. Раньше Label
-            // доходил до нижней границы и стирал почти всю нижнюю линию поля поиска.
-            _placeholderLabel.SetBounds(horizontalPadding, 1, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 4));
             ApplyPlaceholder();
         }
     }

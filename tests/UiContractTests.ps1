@@ -105,9 +105,10 @@ Assert-Ui $comboHasCompleteChrome 'combo boxes draw rounded chrome and dropdown 
 $opticalVerticalCenter = $controls -match 'textRect = new Rectangle\(groupLeft \+ 23, -1' -and
     $controls -match '\(Height - editorHeight\) / 2 - 1' -and $controls -match 'e\.Bounds\.Top - 1'
 Assert-Ui $opticalVerticalCenter 'buttons and fields share the optical text baseline'
-$placeholderPreservesBorder = $controls -match '_placeholderLabel\.SetBounds\(horizontalPadding, 1' -and
-    $controls -match 'Height - 4'
-Assert-Ui $placeholderPreservesBorder 'placeholder cannot erase the field border'
+$placeholderPreservesBorder = $controls -notmatch 'readonly Label _placeholderLabel' -and
+    $controls -match 'TextRenderer\.DrawText\(e\.Graphics, _placeholder' -and
+    $controls -match 'new Rectangle\(1, 1, Math\.Max\(1, Width - 3\)'
+Assert-Ui $placeholderPreservesBorder 'painted placeholder cannot erase or clip the field border'
 $comboFillIsClipped = $controls -match 'GraphicsState buttonState = g\.Save\(\)' -and
     $controls -match 'g\.SetClip\(clipPath\)'
 Assert-Ui $comboFillIsClipped 'combo dropdown fill cannot restore square corners'
