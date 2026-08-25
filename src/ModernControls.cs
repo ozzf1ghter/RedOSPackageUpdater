@@ -384,6 +384,100 @@ namespace RedOSPackageUpdater
         }
     }
 
+    internal sealed class ModernSearchBox : Control
+    {
+        private readonly Timer _caretTimer;
+        private string _value = "";
+        private string _placeholder = "";
+        private int _caret;
+        private bool _caretVisible;
+        public string Placeholder { get { return _placeholder; } set { _placeholder = value ?? ""; Invalidate(); } }
+        public int TextLength { get { return _value.Length; } }
+        public override string Text
+        {
+            get { return _value; }
+            set
+            {
+                string next = value ?? "";
+                if (_value == next) return;
+                _value = next; _caret = _value.Length; Invalidate(); OnTextChanged(EventArgs.Empty);
+            }
+        }
+        public ModernSearchBox()
+        {
+            Height = 28; BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
+            Cursor = Cursors.IBeam; TabStop = true;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw | ControlStyles.UserPaint | ControlStyles.Selectable, true);
+            _caretTimer = new Timer { Interval = 530 };
+            _caretTimer.Tick += delegate { _caretVisible = !_caretVisible; Invalidate(); };
+        }
+        public void Clear() { Text = ""; }
+        protected override void Dispose(bool disposing) { if (disposing) _caretTimer.Dispose(); base.Dispose(disposing); }
+        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); _caretVisible = true; _caretTimer.Start(); Invalidate(); }
+        protected override void OnLostFocus(EventArgs e) { _caretTimer.Stop(); _caretVisible = false; Invalidate(); base.OnLostFocus(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { Focus(); _caret = _value.Length; _caretVisible = true; Invalidate(); base.OnMouseDown(e); }
+        protected override bool IsInputKey(Keys keyData)
+        {
+            Keys key = keyData & Keys.KeyCode;
+            return key == Keys.Left || key == Keys.Right || key == Keys.Home || key == Keys.End || key == Keys.Delete || base.IsInputKey(keyData);
+        }
+        protected override void OnKeyPress(KeyPressEventArgs e)
+        {
+            if (!char.IsControl(e.KeyChar)) { Insert(e.KeyChar.ToString()); e.Handled = true; }
+            else if (e.KeyChar == '\b') { Backspace(); e.Handled = true; }
+            base.OnKeyPress(e);
+        }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.A) { _caret = _value.Length; e.SuppressKeyPress = true; }
+            else if (e.Control && e.KeyCode == Keys.C) { if (_value.Length > 0) try { Clipboard.SetText(_value); } catch { } e.SuppressKeyPress = true; }
+            else if (e.Control && e.KeyCode == Keys.X) { if (_value.Length > 0) try { Clipboard.SetText(_value); } catch { } Clear(); e.SuppressKeyPress = true; }
+            else if (e.Control && e.KeyCode == Keys.V) { try { if (Clipboard.ContainsText()) Insert(Clipboard.GetText()); } catch { } e.SuppressKeyPress = true; }
+            else if (e.KeyCode == Keys.Left) { _caret = Math.Max(0, _caret - 1); e.SuppressKeyPress = true; Invalidate(); }
+            else if (e.KeyCode == Keys.Right) { _caret = Math.Min(_value.Length, _caret + 1); e.SuppressKeyPress = true; Invalidate(); }
+            else if (e.KeyCode == Keys.Home) { _caret = 0; e.SuppressKeyPress = true; Invalidate(); }
+            else if (e.KeyCode == Keys.End) { _caret = _value.Length; e.SuppressKeyPress = true; Invalidate(); }
+            else if (e.KeyCode == Keys.Delete) { if (_caret < _value.Length) { int keep = _caret; Text = _value.Remove(_caret, 1); _caret = keep; } e.SuppressKeyPress = true; }
+            base.OnKeyDown(e);
+        }
+        private void Insert(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            text = text.Replace("\r", "").Replace("\n", "");
+            if (text.Length == 0) return;
+            int nextCaret = _caret + text.Length; string next = _value.Insert(_caret, text); Text = next; _caret = Math.Min(nextCaret, _value.Length);
+        }
+        private void Backspace()
+        {
+            if (_caret <= 0) return;
+            int nextCaret = _caret - 1; Text = _value.Remove(nextCaret, 1); _caret = nextCaret;
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.Clear(Parent == null ? Theme.Bg : Parent.BackColor);
+            var outerBounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            var innerBounds = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
+            using (GraphicsPath outer = ModernButton.Rounded(outerBounds, 6))
+            using (var border = new SolidBrush(Focused ? Theme.Accent : Theme.Border)) e.Graphics.FillPath(border, outer);
+            using (GraphicsPath inner = ModernButton.Rounded(innerBounds, 5))
+            using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, inner);
+            string shown = _value.Length == 0 ? _placeholder : _value;
+            Color textColor = _value.Length == 0 ? Theme.Muted : ForeColor;
+            var textBounds = new Rectangle(9, -1, Math.Max(1, Width - 18), Height + 1);
+            TextRenderer.DrawText(e.Graphics, shown, Font, textBounds, textColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            if (Focused && _caretVisible)
+            {
+                string prefix = _value.Substring(0, Math.Min(_caret, _value.Length));
+                int x = 9 + TextRenderer.MeasureText(e.Graphics, prefix, Font, new Size(int.MaxValue, Height), TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+                x = Math.Min(Width - 9, x);
+                using (var pen = new Pen(Theme.Text)) e.Graphics.DrawLine(pen, x, 6, x, Height - 7);
+            }
+        }
+    }
+
     internal sealed class ModernCheckBox : CheckBox
     {
         private bool _hover;

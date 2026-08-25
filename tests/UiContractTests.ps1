@@ -44,7 +44,7 @@ Assert-Ui $safeBoot 'kernel profiles diagnose BLS problems without rewriting boo
 $hasControls = $controls -match 'class ModernButton' -and $controls -match 'class ModernCheckBox' -and
     $controls -match 'class ModernComboBox' -and $controls -match 'class ModernDataGridView' -and
     $controls -match 'class ModernProgressBar' -and $controls -match 'class ModernToast' -and
-    $controls -match 'class ModernTextBox' -and $controls -match 'class ModernListView' -and
+    $controls -match 'class ModernTextBox' -and $controls -match 'class ModernSearchBox' -and $controls -match 'class ModernListView' -and
     $controls -match 'class ModernNumericUpDown'
 Assert-Ui $hasControls 'core custom controls exist'
 $legacyRemoved = $shell -notmatch 'legacyMenu' -and $main -notmatch 'new MenuStrip'
@@ -127,8 +127,11 @@ $uniformPageHeaders = $shell -match 'const int headerHeight = 78' -and
     $shell -notmatch 'head\.Height = 72'
 Assert-Ui $uniformPageHeaders 'all pages use one header and action size'
 $searchClearsScrollbar = $main -match 'treeHeader = new Panel \{ Dock = DockStyle\.Top, Height = 74' -and
-    $main -match '_treeSearch = new ModernTextBox \{ Left = 0, Top = 36'
+    $main -match '_treeSearch = new ModernSearchBox \{ Left = 0, Top = 36'
 Assert-Ui $searchClearsScrollbar 'server search leaves space before the tree scrollbar'
+$searchHasNoChildWindow = $controls -match 'class ModernSearchBox : Control' -and
+    $main -match '_summarySearch = new ModernSearchBox' -and $controls -match 'ControlStyles\.Selectable'
+Assert-Ui $searchHasNoChildWindow 'search fields are fully painted controls without native child-window chrome'
 $actionSurfacesAreExplicit = $shell -match 'var actions = new FlowLayoutPanel[\s\S]{0,220}BackColor = Theme\.Surface' -and
     $shell -match 'var launchButtons = new FlowLayoutPanel[\s\S]{0,180}BackColor = Theme\.Surface' -and
     $shell -match 'var sshActions = new FlowLayoutPanel[\s\S]{0,120}BackColor = Theme\.Surface'

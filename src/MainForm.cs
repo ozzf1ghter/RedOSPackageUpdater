@@ -19,7 +19,7 @@ namespace RedOSPackageUpdater
 
         private TreeView _tree;
         private Label _treeEmpty;
-        private ModernTextBox _treeSearch;
+        private ModernSearchBox _treeSearch;
         private ComboBox _profile;
         private CheckBox _noReboot;
         private ToolTip _tips;
@@ -49,7 +49,7 @@ namespace RedOSPackageUpdater
         private Label _fstecProgressLabel;
         private DataGridView _summary;
         private TextBox _log;
-        private ModernTextBox _summarySearch;
+        private ModernSearchBox _summarySearch;
 
         private CancellationTokenSource _cts;
         private volatile bool _running;
@@ -218,7 +218,7 @@ namespace RedOSPackageUpdater
             _tips.SetToolTip(_btnToggleAll, "Отметить все серверы");
             treeActions.Controls.Add(treeTitle);
             treeActions.Controls.Add(_btnToggleAll);
-            _treeSearch = new ModernTextBox { Left = 0, Top = 36, Width = Math.Max(1, treeHeader.ClientSize.Width),
+            _treeSearch = new ModernSearchBox { Left = 0, Top = 36, Width = Math.Max(1, treeHeader.ClientSize.Width),
                 Height = 28, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Placeholder = "Поиск серверов…" };
             _treeSearch.TextChanged += delegate { RebuildTree(); };
             _tips.SetToolTip(_treeSearch, "Поиск по системе, имени, адресу и роли · Ctrl+F · Esc для очистки");
@@ -274,7 +274,7 @@ namespace RedOSPackageUpdater
             _btnToggleLog.Dock = DockStyle.Right;
             _btnToggleLog.Click += (s, e) => ToggleLogPanel();
             gridHeader.Controls.Add(_btnToggleLog);
-            _summarySearch = new ModernTextBox { Dock = DockStyle.Right, Width = 226, Height = 26, Placeholder = "Поиск по результатам…", Margin = new Padding(0, 0, 8, 0) };
+            _summarySearch = new ModernSearchBox { Dock = DockStyle.Right, Width = 226, Height = 26, Placeholder = "Поиск по результатам…", Margin = new Padding(0, 0, 8, 0) };
             _summarySearch.TextChanged += delegate { FilterSummaryRows(); };
             _tips.SetToolTip(_summarySearch, "Поиск по всем колонкам результатов · Ctrl+F · Esc для очистки");
             gridHeader.Controls.Add(_summarySearch); _summarySearch.BringToFront();
