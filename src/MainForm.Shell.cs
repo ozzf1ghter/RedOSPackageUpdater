@@ -83,7 +83,8 @@ namespace RedOSPackageUpdater
             var detailCaption = Theme.SectionLabel("Выбранный объект"); detailCaption.Dock = DockStyle.Top; detailCaption.Height = 24;
             _serverDetailTitle = new Label { Dock = DockStyle.Top, Height = 40, Font = Theme.UiFontPageTitle, ForeColor = Theme.Text };
             _serverDetailBody = new Label { Dock = DockStyle.Top, Height = 142, ForeColor = Theme.Text, Padding = new Padding(0, 8, 0, 0), Font = Theme.UiFontBodyLarge };
-            var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
+            var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, FlowDirection = FlowDirection.LeftToRight,
+                Padding = new Padding(0, 6, 0, 0), BackColor = Theme.Surface };
             _btnEditSelection = AddCompactBtn(actions, "Изменить", 90, delegate { EditSelected(); });
             _btnSystemServices = AddCompactBtn(actions, "Сервисы системы", 126, delegate { EditServices(); });
             var newOperation = AddCompactBtn(actions, "Новая операция", 120, delegate { ShowApplicationPage("operations"); }); Theme.Primary(newOperation);
@@ -133,7 +134,8 @@ namespace RedOSPackageUpdater
             var launch = new ModernCard { Dock = DockStyle.Top, Height = 112, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(launch);
             var launchTitle = new Label { Dock = DockStyle.Top, Height = 26, Text = "Новая проверка", Font = Theme.UiFontBold };
             var launchHint = new Label { Dock = DockStyle.Top, Height = 27, Text = "Будут проверены выбранные на странице «Серверы» узлы.", ForeColor = Theme.Muted };
-            var launchButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
+            var launchButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight,
+                BackColor = Theme.Surface };
             _btnVulnerabilityScan = LockConfiguration(AddCompactBtn(launchButtons, "Проверить выбранные", 180, delegate { RunVulnerabilityScan(); ShowApplicationPage("operations"); })); Theme.Primary(_btnVulnerabilityScan);
             LockConfiguration(AddCompactBtn(launchButtons, "Импортировать базу", 142, delegate { ImportVulnerabilityDb(); }));
             launch.Controls.Add(launchButtons); launch.Controls.Add(launchHint); launch.Controls.Add(launchTitle);
@@ -182,7 +184,7 @@ namespace RedOSPackageUpdater
             var ssh = new ModernCard { Dock = DockStyle.Top, Height = 118, BackColor = Theme.Surface, Padding = new Padding(14) }; Theme.Box(ssh);
             var sshTitle = new Label { Dock = DockStyle.Top, Height = 25, Text = "SSH-ключи серверов", Font = Theme.UiFontBold };
             var sshHint = new Label { Dock = DockStyle.Top, Height = 32, Text = "Неизвестные ключи подтверждаются оператором. Для массовой операции подтверждение может действовать на весь текущий запуск.", ForeColor = Theme.Muted };
-            var sshActions = new FlowLayoutPanel { Dock = DockStyle.Fill };
+            var sshActions = new FlowLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
             LockConfiguration(AddCompactBtn(sshActions, "Управление ключами", 146, delegate { ManageHostKeys(); }));
             LockConfiguration(AddCompactBtn(sshActions, "Очистить кэш учёток", 154, delegate { _cache.Clear(); Store.SaveCache(_cache); SetStatus("Кэш учёток очищен"); }));
             ssh.Controls.Add(sshActions); ssh.Controls.Add(sshHint); ssh.Controls.Add(sshTitle);

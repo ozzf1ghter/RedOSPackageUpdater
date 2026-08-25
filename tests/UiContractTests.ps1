@@ -105,6 +105,13 @@ $uniformPageHeaders = $shell -match 'const int headerHeight = 78' -and
     $shell -match 'const int actionWidth = 146' -and $shell -match 'const int actionHeight = 40' -and
     $shell -notmatch 'head\.Height = 72'
 Assert-Ui $uniformPageHeaders 'all pages use one header and action size'
+$searchClearsScrollbar = $main -match 'treeHeader = new Panel \{ Dock = DockStyle\.Top, Height = 74' -and
+    $main -match '_treeSearch = new ModernTextBox \{ Left = 0, Top = 36'
+Assert-Ui $searchClearsScrollbar 'server search leaves space before the tree scrollbar'
+$actionSurfacesAreExplicit = $shell -match 'var actions = new FlowLayoutPanel[\s\S]{0,220}BackColor = Theme\.Surface' -and
+    $shell -match 'var launchButtons = new FlowLayoutPanel[\s\S]{0,180}BackColor = Theme\.Surface' -and
+    $shell -match 'var sshActions = new FlowLayoutPanel[\s\S]{0,120}BackColor = Theme\.Surface'
+Assert-Ui $actionSurfacesAreExplicit 'button containers use explicit design-system surfaces'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')

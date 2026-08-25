@@ -202,7 +202,7 @@ namespace RedOSPackageUpdater
             // Segoe UI шире, чем шрифт-заместитель в песочнице, где вёрстка проверялась).
             var left = new Panel { Dock = DockStyle.Fill, BackColor = Theme.SidebarBg, Padding = new Padding(8, 6, 8, 8) };
             Theme.EdgeLine(left, DockStyle.Right);
-            var treeHeader = new Panel { Dock = DockStyle.Top, Height = 68, BackColor = Theme.SidebarBg };
+            var treeHeader = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = Theme.SidebarBg };
             var treeActions = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Theme.SidebarBg };
             var treeTitle = Theme.SectionLabel("Серверы");
             treeTitle.Left = 2; treeTitle.Top = 5; treeTitle.Width = 150; treeTitle.Height = 20;
@@ -218,7 +218,8 @@ namespace RedOSPackageUpdater
             _tips.SetToolTip(_btnToggleAll, "Отметить все серверы");
             treeActions.Controls.Add(treeTitle);
             treeActions.Controls.Add(_btnToggleAll);
-            _treeSearch = new ModernTextBox { Dock = DockStyle.Bottom, Height = 28, Placeholder = "Поиск серверов…" };
+            _treeSearch = new ModernTextBox { Left = 0, Top = 36, Width = Math.Max(1, treeHeader.ClientSize.Width),
+                Height = 28, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Placeholder = "Поиск серверов…" };
             _treeSearch.TextChanged += delegate { RebuildTree(); };
             _tips.SetToolTip(_treeSearch, "Поиск по системе, имени, адресу и роли · Ctrl+F · Esc для очистки");
             treeHeader.Controls.Add(_treeSearch);
