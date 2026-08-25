@@ -6,6 +6,24 @@ using System.Runtime.InteropServices;
 
 namespace RedOSPackageUpdater
 {
+    internal sealed class BorderlessTextEditor : TextBox
+    {
+        private const int WsBorder = 0x00800000;
+        private const int WsExClientEdge = 0x00000200;
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.Style &= ~WsBorder;
+                cp.ExStyle &= ~WsExClientEdge;
+                return cp;
+            }
+        }
+        public BorderlessTextEditor() { BorderStyle = BorderStyle.None; }
+        protected override void OnHandleCreated(EventArgs e) { BorderStyle = BorderStyle.None; base.OnHandleCreated(e); }
+    }
+
     internal static class ModernControlShape
     {
         [DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
@@ -298,15 +316,25 @@ namespace RedOSPackageUpdater
         public override string Text { get { return _editor == null ? base.Text : _editor.Text; } set { if (_editor != null) _editor.Text = value ?? ""; else base.Text = value; } }
         public ModernTextBox()
         {
-            Height = 28; BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
+            Height = 28; BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont; BorderStyle = BorderStyle.None;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            _editor = new TextBox { BorderStyle = BorderStyle.None, BackColor = Theme.Surface,
+            _editor = new BorderlessTextEditor { BorderStyle = BorderStyle.None, BackColor = Theme.Surface,
                 ForeColor = Theme.Text, Font = Theme.UiFont };
             _editor.TextChanged += delegate { base.Text = _editor.Text; UpdatePlaceholder(); };
             _editor.Enter += delegate { UpdatePlaceholder(); Invalidate(); };
             _editor.Leave += delegate { UpdatePlaceholder(); Invalidate(); };
             Controls.Add(_editor);
+        }
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.Style &= ~0x00800000;
+                cp.ExStyle &= ~0x00000200;
+                return cp;
+            }
         }
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyPlaceholder(); LayoutEditor(); }
         protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutEditor(); }

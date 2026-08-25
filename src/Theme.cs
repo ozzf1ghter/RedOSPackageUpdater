@@ -392,7 +392,7 @@ namespace RedOSPackageUpdater
                     var panel = c as Panel;
                     if (panel != null && !(panel is ModernCard) && panel.BackColor != Color.Transparent) panel.BackColor = Surface;
                 }
-                if (c.HasChildren) ApplyDialogControls(c);
+                if (c.HasChildren && !(c is ModernTextBox)) ApplyDialogControls(c);
             }
         }
 

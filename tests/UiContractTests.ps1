@@ -109,6 +109,10 @@ $placeholderPreservesBorder = $controls -notmatch 'readonly Label _placeholderLa
     $controls -match 'SendMessage\(_editor\.Handle, EmSetCueBanner' -and
     $controls -match 'new Rectangle\(1, 1, Math\.Max\(1, Width - 3\)'
 Assert-Ui $placeholderPreservesBorder 'native cue banner cannot erase or be hidden behind the field editor'
+$nativeTextChromeRemoved = $controls -match 'class BorderlessTextEditor' -and
+    $controls -match 'cp\.Style &= ~WsBorder' -and $controls -match 'cp\.ExStyle &= ~WsExClientEdge' -and
+    $theme -match 'c\.HasChildren && !\(c is ModernTextBox\)'
+Assert-Ui $nativeTextChromeRemoved 'theme and Win32 styles cannot restore native text-field stripes'
 $comboFillIsClipped = $controls -match 'GraphicsState buttonState = g\.Save\(\)' -and
     $controls -match 'g\.SetClip\(clipPath\)'
 Assert-Ui $comboFillIsClipped 'combo dropdown fill cannot restore square corners'
