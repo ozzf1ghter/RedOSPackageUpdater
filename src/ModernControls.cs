@@ -345,14 +345,39 @@ namespace RedOSPackageUpdater
 
     internal sealed class ModernComboBox : ComboBox
     {
+        private const int WmPaint = 0x000F;
+        private const int WmNcPaint = 0x0085;
         public ModernComboBox()
         {
             DrawMode = DrawMode.OwnerDrawFixed; DropDownStyle = ComboBoxStyle.DropDownList;
             FlatStyle = FlatStyle.Flat; ItemHeight = 25; IntegralHeight = false; DropDownHeight = 260;
             BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
         }
-        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ModernControlShape.Apply(this, 5); }
-        protected override void OnResize(EventArgs e) { base.OnResize(e); ModernControlShape.Apply(this, 5); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); Invalidate(); }
+        protected override void OnSelectedIndexChanged(EventArgs e) { base.OnSelectedIndexChanged(e); Invalidate(); }
+        protected override void OnDropDown(EventArgs e) { base.OnDropDown(e); Invalidate(); }
+        protected override void OnDropDownClosed(EventArgs e) { base.OnDropDownClosed(e); Invalidate(); }
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if ((m.Msg == WmPaint || m.Msg == WmNcPaint) && IsHandleCreated) DrawChrome();
+        }
+        private void DrawChrome()
+        {
+            using (Graphics g = Graphics.FromHwnd(Handle))
+            {
+                int buttonWidth = Math.Max(22, Height - 2);
+                var button = new Rectangle(Math.Max(1, Width - buttonWidth - 1), 1,
+                    Math.Max(1, buttonWidth), Math.Max(1, Height - 2));
+                using (var fill = new SolidBrush(Enabled ? BackColor : Theme.HeaderBg)) g.FillRectangle(fill, button);
+                using (var border = new Pen(Focused ? Theme.Accent : Theme.Border))
+                    g.DrawRectangle(border, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+                int cx = button.Left + button.Width / 2;
+                int cy = button.Top + button.Height / 2;
+                Point[] arrow = { new Point(cx - 4, cy - 2), new Point(cx + 4, cy - 2), new Point(cx, cy + 3) };
+                using (var brush = new SolidBrush(Enabled ? Theme.Muted : Theme.Disabled)) g.FillPolygon(brush, arrow);
+            }
+        }
         protected override void OnDrawItem(DrawItemEventArgs e)
         {
             if (e.Index < 0) return;

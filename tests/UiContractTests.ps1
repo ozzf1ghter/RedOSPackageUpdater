@@ -97,6 +97,9 @@ Assert-Ui $textBoxesKeepCompleteBorders 'native text boxes keep complete corner 
 $compactServerActions = $main -notmatch 'var bulkNodes' -and
     $main -match 'AddCompactBtn\(leftButtons, [^,]+, 72'
 Assert-Ui $compactServerActions 'server action bar fits its minimum width'
+$comboHasCompleteChrome = $controls -match 'class ModernComboBox[\s\S]*?DrawChrome' -and
+    $controls -match 'Graphics\.FromHwnd\(Handle\)'
+Assert-Ui $comboHasCompleteChrome 'combo boxes draw one complete border and dropdown button'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')
