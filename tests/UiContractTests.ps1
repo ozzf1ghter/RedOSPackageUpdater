@@ -106,9 +106,9 @@ $opticalVerticalCenter = $controls -match 'textRect = new Rectangle\(groupLeft \
     $controls -match '\(Height - editorHeight\) / 2 - 1' -and $controls -match 'e\.Bounds\.Top - 1'
 Assert-Ui $opticalVerticalCenter 'buttons and fields share the optical text baseline'
 $placeholderPreservesBorder = $controls -notmatch 'readonly Label _placeholderLabel' -and
-    $controls -match 'TextRenderer\.DrawText\(e\.Graphics, _placeholder' -and
+    $controls -match 'SendMessage\(_editor\.Handle, EmSetCueBanner' -and
     $controls -match 'new Rectangle\(1, 1, Math\.Max\(1, Width - 3\)'
-Assert-Ui $placeholderPreservesBorder 'painted placeholder cannot erase or clip the field border'
+Assert-Ui $placeholderPreservesBorder 'native cue banner cannot erase or be hidden behind the field editor'
 $comboFillIsClipped = $controls -match 'GraphicsState buttonState = g\.Save\(\)' -and
     $controls -match 'g\.SetClip\(clipPath\)'
 Assert-Ui $comboFillIsClipped 'combo dropdown fill cannot restore square corners'

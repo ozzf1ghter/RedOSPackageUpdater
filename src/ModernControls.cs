@@ -330,18 +330,16 @@ namespace RedOSPackageUpdater
             using (GraphicsPath path = ModernButton.Rounded(bounds, 6))
             using (var pen = new Pen(_editor.Focused ? Theme.Accent : Theme.Border))
                 e.Graphics.DrawPath(pen, path);
-            if (_placeholder.Length > 0 && _editor.TextLength == 0 && !_editor.Focused)
-            {
-                var placeholderBounds = new Rectangle(8, -1, Math.Max(1, Width - 16), Height + 1);
-                TextRenderer.DrawText(e.Graphics, _placeholder, Font, placeholderBounds, Theme.Muted,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
-                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-            }
         }
-        private void ApplyPlaceholder() { UpdatePlaceholder(); }
+        private void ApplyPlaceholder()
+        {
+            if (_editor != null && _editor.IsHandleCreated)
+                SendMessage(_editor.Handle, EmSetCueBanner, new IntPtr(1), _placeholder);
+        }
         private void UpdatePlaceholder()
         {
             if (_editor == null) return;
+            ApplyPlaceholder();
             Invalidate();
         }
         private void LayoutEditor()
