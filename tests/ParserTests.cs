@@ -113,9 +113,9 @@ internal static class ParserTests
         Check(tamperRejected, "изменённый экспорт отклоняется");
         Check(UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "bb", "aa"), "обновлённая сборка той же версии обнаруживается по SHA-256");
         Check(!UpdatePolicy.IsAvailable(new Version("1.5.0"), new Version("1.5.0"), "AA", "aa"), "та же сборка повторно не скачивается");
-        foreach (int width in new[] { 720, 766, 929, 930, 1100 })
+        foreach (int width in new[] { 720, 766, 929, 959, 960, 1100 })
         {
-            CommandBarLayout command = UiLayoutRules.CommandBar(width, 158);
+            CommandBarLayout command = UiLayoutRules.CommandBar(width, 236);
             Check(command.PreviewLeft >= 310 && command.RunLeft > command.PreviewLeft && command.StopLeft > command.RunLeft,
                 "панель действий не перекрывает выбор сценария при ширине " + width);
         }

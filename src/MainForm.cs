@@ -182,7 +182,7 @@ namespace RedOSPackageUpdater
             _btnStop.Click += (s, e) => { if (_cts != null) _cts.Cancel(); SetStatus("Останавливаю..."); };
             Theme.Danger_(_btnStop);
             top.Controls.Add(_btnStop);
-            _status = new StatusChip { Width = 158, Height = 28 };
+            _status = new StatusChip { Width = 236, Height = 28 };
             _status.SetStatus("Готово", StatusChip.Kind.Idle);
             top.Controls.Add(_status);
             _excluded = new Label { Left = 190, Top = 65, Width = 900, Height = 18, ForeColor = Theme.Danger, Cursor = Cursors.Hand, Text = "", AutoEllipsis = true };
@@ -1744,6 +1744,7 @@ namespace RedOSPackageUpdater
         private void SetStatus(string s)
         {
             _status.SetStatus(s ?? "", ClassifyStatus(s));
+            if (_tips != null) _tips.SetToolTip(_status, s ?? "");
             string value = (s ?? "").ToLowerInvariant();
             if (!_running && (value.Contains("сохран") || value.Contains("обновлен") || value.Contains("очищен") ||
                 value.Contains("импорт выполнен") || value.Contains("экспортирован") || value.Contains("добавлено")))

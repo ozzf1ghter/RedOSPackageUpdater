@@ -21,7 +21,10 @@ namespace RedOSPackageUpdater
         public static CommandBarLayout CommandBar(int width, int statusWidth)
         {
             var result = new CommandBarLayout();
-            result.Compact = width < 930;
+            // При меньшей ширине длинный итоговый статус скрывается из верхней
+            // строки (полный текст остаётся в нижней строке состояния/tooltip),
+            // чтобы не перекрывать кнопки запуска.
+            result.Compact = width < 960;
             result.PreviewWidth = result.Compact ? 112 : 130;
             result.RunWidth = result.Compact ? 158 : 174;
             result.StopWidth = result.Compact ? 64 : 72;
