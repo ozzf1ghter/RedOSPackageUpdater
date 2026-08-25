@@ -9,7 +9,7 @@ namespace RedOSPackageUpdater
     // Диалог одного узла.
     internal class NodeForm : Form
     {
-        private TextBox _name, _host, _role;
+        private ModernTextBox _name, _host, _role;
         private NumericUpDown _port;
         private CheckBox _enabled;
         public Node Result;
@@ -121,4 +121,3 @@ namespace RedOSPackageUpdater
     }
 
 }
-

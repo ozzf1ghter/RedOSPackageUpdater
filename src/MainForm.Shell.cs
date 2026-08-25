@@ -103,13 +103,15 @@ namespace RedOSPackageUpdater
         {
             var page = NewPage();
             var head = BuildPageHeader("Операции", "Обновление пакетов, ядра и управление версиями", "Изменить выбор", delegate { ShowApplicationPage("servers"); });
-            _selectionLabel = new Label { Dock = DockStyle.Bottom, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 0, 0), ForeColor = Theme.Muted, BackColor = Theme.Surface };
-            head.Controls.Add(_selectionLabel);
-            head.Height = 72;
+            var selectionBar = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = Theme.Surface };
+            _selectionLabel = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(18, 0, 0, 0), ForeColor = Theme.Muted, BackColor = Theme.Surface };
+            selectionBar.Controls.Add(_selectionLabel); Theme.EdgeLine(selectionBar, DockStyle.Bottom);
             operationBar.Dock = DockStyle.Top;
             operationContent.Dock = DockStyle.Fill;
             page.Controls.Add(operationContent);
             page.Controls.Add(operationBar);
+            page.Controls.Add(selectionBar);
             page.Controls.Add(head);
             return page;
         }
@@ -299,16 +301,21 @@ namespace RedOSPackageUpdater
 
         private Panel BuildPageHeader(string title, string subtitle, string actionText, Action action, bool lockWhileRunning = false)
         {
-            var head = new Panel { Dock = DockStyle.Top, Height = 78, BackColor = Theme.Surface, Padding = new Padding(18, 12, 18, 10) };
+            const int headerHeight = 78;
+            const int actionWidth = 146;
+            const int actionHeight = 40;
+            var head = new Panel { Dock = DockStyle.Top, Height = headerHeight, BackColor = Theme.Surface };
             Theme.EdgeLine(head, DockStyle.Bottom);
             var titleLabel = new Label { Left = 18, Top = 12, Width = 500, Height = 28, Text = title, Font = Theme.UiFontPageTitle, ForeColor = Theme.Text };
             var subtitleLabel = new Label { Left = 19, Top = 43, Width = 650, Height = 20, Text = subtitle, ForeColor = Theme.Muted };
-            var actionButton = new ModernButton { Dock = DockStyle.Right, Width = 146, Text = actionText, Margin = new Padding(4) };
+            var actionButton = new ModernButton { Width = actionWidth, Height = actionHeight,
+                Left = 0, Top = (headerHeight - actionHeight) / 2, Anchor = AnchorStyles.Top | AnchorStyles.Right, Text = actionText };
             Theme.Secondary(actionButton); actionButton.Click += delegate { if (action != null) action(); };
             if (lockWhileRunning) LockConfiguration(actionButton);
             head.Controls.Add(actionButton); head.Controls.Add(subtitleLabel); head.Controls.Add(titleLabel);
             Action layout = delegate
             {
+                actionButton.Left = Math.Max(18, head.ClientSize.Width - actionWidth - 18);
                 int available = Math.Max(120, actionButton.Left - 28);
                 titleLabel.Width = available;
                 subtitleLabel.Width = available;

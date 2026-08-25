@@ -7,7 +7,8 @@ namespace RedOSPackageUpdater
 {
     internal class RepoDialog : Form
     {
-        private TextBox _host, _scripts;
+        private ModernTextBox _host;
+        private TextBox _scripts;
         public string Host;
         public List<string> Scripts;
 
@@ -49,4 +50,3 @@ namespace RedOSPackageUpdater
     // Настройки запуска.
 
 }
-

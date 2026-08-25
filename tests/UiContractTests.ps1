@@ -91,8 +91,9 @@ $singleSelectionToggle = $main -match '_btnToggleAll' -and $main -notmatch 'var 
 Assert-Ui $singleSelectionToggle 'server selection uses one contextual toggle button'
 $noTopStripe = $chrome -notmatch 'FillRectangle\(accent,\s*0,\s*0,\s*Width,\s*2\)'
 Assert-Ui $noTopStripe 'title bar has no decorative top stripe'
-$textBoxesKeepCompleteBorders = $controls -match 'class ModernTextBox[\s\S]*?ApplyMargins' -and
-    $controls -match 'if \(Region != null\)'
+$textBoxesKeepCompleteBorders = $controls -match 'class ModernTextBox : UserControl' -and
+    $controls -match 'BorderStyle = BorderStyle\.None' -and
+    $controls -match '\(Height - editorHeight\) / 2'
 Assert-Ui $textBoxesKeepCompleteBorders 'native text boxes keep complete corner borders'
 $compactServerActions = $main -notmatch 'var bulkNodes' -and
     $main -match 'AddCompactBtn\(leftButtons, [^,]+, 72'
@@ -100,6 +101,10 @@ Assert-Ui $compactServerActions 'server action bar fits its minimum width'
 $comboHasCompleteChrome = $controls -match 'class ModernComboBox[\s\S]*?DrawChrome' -and
     $controls -match 'Graphics\.FromHwnd\(Handle\)'
 Assert-Ui $comboHasCompleteChrome 'combo boxes draw one complete border and dropdown button'
+$uniformPageHeaders = $shell -match 'const int headerHeight = 78' -and
+    $shell -match 'const int actionWidth = 146' -and $shell -match 'const int actionHeight = 40' -and
+    $shell -notmatch 'head\.Height = 72'
+Assert-Ui $uniformPageHeaders 'all pages use one header and action size'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')

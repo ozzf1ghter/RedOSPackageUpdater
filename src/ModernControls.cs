@@ -280,29 +280,71 @@ namespace RedOSPackageUpdater
         }
     }
 
-    internal sealed class ModernTextBox : TextBox
+    internal sealed class ModernTextBox : UserControl
     {
         private const int EmSetCueBanner = 0x1501;
         private const int EmSetMargins = 0x00D3;
+        private readonly TextBox _editor;
+        private readonly Label _placeholderLabel;
         private string _placeholder = "";
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
         [DllImport("user32.dll", EntryPoint = "SendMessageW")] private static extern IntPtr SendMessagePtr(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-        public string Placeholder { get { return _placeholder; } set { _placeholder = value ?? ""; ApplyPlaceholder(); } }
+        public string Placeholder { get { return _placeholder; } set { _placeholder = value ?? ""; UpdatePlaceholder(); } }
+        public bool Multiline { get { return _editor.Multiline; } set { _editor.Multiline = value; LayoutEditor(); } }
+        public ScrollBars ScrollBars { get { return _editor.ScrollBars; } set { _editor.ScrollBars = value; } }
+        public bool AcceptsReturn { get { return _editor.AcceptsReturn; } set { _editor.AcceptsReturn = value; } }
+        public bool ReadOnly { get { return _editor.ReadOnly; } set { _editor.ReadOnly = value; } }
+        public int TextLength { get { return _editor.TextLength; } }
+        public void Clear() { _editor.Clear(); }
+        public override string Text { get { return _editor == null ? base.Text : _editor.Text; } set { if (_editor != null) _editor.Text = value ?? ""; else base.Text = value; } }
         public ModernTextBox()
         {
-            BorderStyle = BorderStyle.FixedSingle; BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
+            Height = 28; BackColor = Theme.Surface; ForeColor = Theme.Text; Font = Theme.UiFont;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            _editor = new TextBox { BorderStyle = BorderStyle.None, BackColor = Theme.Surface,
+                ForeColor = Theme.Text, Font = Theme.UiFont };
+            _placeholderLabel = new Label { BackColor = Theme.Surface, ForeColor = Theme.Muted,
+                TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.IBeam };
+            _placeholderLabel.Click += delegate { _editor.Focus(); };
+            _editor.TextChanged += delegate { base.Text = _editor.Text; UpdatePlaceholder(); };
+            _editor.Enter += delegate { UpdatePlaceholder(); Invalidate(); };
+            _editor.Leave += delegate { UpdatePlaceholder(); Invalidate(); };
+            Controls.Add(_editor);
+            Controls.Add(_placeholderLabel); _placeholderLabel.BringToFront();
         }
-        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyPlaceholder(); ApplyMargins(); }
-        protected override void OnEnter(EventArgs e) { base.OnEnter(e); BackColor = Theme.IsDark ? Theme.HeaderBg : Color.White; }
-        protected override void OnLeave(EventArgs e) { base.OnLeave(e); BackColor = Theme.Surface; }
-        private void ApplyPlaceholder() { if (IsHandleCreated) SendMessage(Handle, EmSetCueBanner, new IntPtr(1), _placeholder); }
-        private void ApplyMargins()
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyPlaceholder(); LayoutEditor(); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutEditor(); }
+        protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); if (_editor != null) { _editor.Font = Font; LayoutEditor(); } }
+        protected override void OnForeColorChanged(EventArgs e) { base.OnForeColorChanged(e); if (_editor != null) _editor.ForeColor = ForeColor; }
+        protected override void OnBackColorChanged(EventArgs e) { base.OnBackColorChanged(e); if (_editor != null) _editor.BackColor = BackColor; if (_placeholderLabel != null) _placeholderLabel.BackColor = BackColor; }
+        protected override void OnClick(EventArgs e) { base.OnClick(e); _editor.Focus(); }
+        protected override void OnPaint(PaintEventArgs e)
         {
-            // Нативный TextBox рисует прямоугольную NC-рамку. Обрезание её круглым Region
-            // оставляло четыре видимых пробела в углах. Скругление допустимо только у полностью
-            // owner-drawn оболочки; здесь сохраняем цельную системную рамку и внутренние поля.
-            if (Region != null) { Region.Dispose(); Region = null; }
-            if (IsHandleCreated && !Multiline) SendMessagePtr(Handle, EmSetMargins, new IntPtr(3), new IntPtr((6 << 16) | 6));
+            base.OnPaint(e);
+            using (var pen = new Pen(_editor.Focused ? Theme.Accent : Theme.Border))
+                e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+        }
+        private void ApplyPlaceholder() { UpdatePlaceholder(); }
+        private void UpdatePlaceholder()
+        {
+            if (_placeholderLabel == null || _editor == null) return;
+            _placeholderLabel.Text = _placeholder;
+            _placeholderLabel.Visible = _placeholder.Length > 0 && _editor.TextLength == 0 && !_editor.Focused;
+        }
+        private void LayoutEditor()
+        {
+            if (_editor == null) return;
+            const int horizontalPadding = 8;
+            if (_editor.Multiline) _editor.SetBounds(horizontalPadding, 6, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 12));
+            else
+            {
+                int editorHeight = _editor.PreferredHeight;
+                _editor.SetBounds(horizontalPadding, Math.Max(1, (Height - editorHeight) / 2),
+                    Math.Max(1, Width - horizontalPadding * 2), editorHeight);
+            }
+            _placeholderLabel.SetBounds(horizontalPadding, 1, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 2));
+            ApplyPlaceholder();
         }
     }
 

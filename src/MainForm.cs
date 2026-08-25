@@ -25,7 +25,7 @@ namespace RedOSPackageUpdater
         private ToolTip _tips;
         private ContextMenuStrip _nodeActionsMenu;
         private Label _pkgLabel;
-        private TextBox _pkgBox;
+        private ModernTextBox _pkgBox;
         private Button _btnRun, _btnStop, _btnPreview, _btnVulnerabilityScan;
         private Button _btnEditSelection, _btnSystemServices, _btnToggleAll;
         private const int PkgInstallIndex = 3;   // индексы режимов "пакеты" в _profile
@@ -141,10 +141,11 @@ namespace RedOSPackageUpdater
             // обрезается по этой (слишком узкой) ширине. Не задаём Width - пусть считает сам.
             var profileLbl = new Label { Text = "Сценарий", Left = 12, Top = 8, AutoSize = true, ForeColor = Theme.Muted, Font = Theme.UiFontSmall };
             top.Controls.Add(profileLbl);
-            var profileBox = new ModernCard { Left = 12, Top = 28, Width = 286, Height = 30, BackColor = Theme.Surface, CornerRadius = 6 };
-            Theme.Box(profileBox);
+            // Без внешней карточки: нативная фактическая высота ComboBox зависит от DPI и темы,
+            // а прежний контейнер высотой 30px обрезал его нижнюю границу.
+            var profileBox = new Panel { Left = 12, Top = 28, Width = 286, Height = 32, BackColor = Theme.Surface };
             top.Controls.Add(profileBox);
-            _profile = new ModernComboBox { Left = 2, Top = 2, Width = 282, Height = 26 };
+            _profile = new ModernComboBox { Dock = DockStyle.Fill };
             Theme.Combo(_profile);
             _profile.Items.Add("Ядро kernel-lt + security");
             _profile.Items.Add("Только security");
