@@ -51,7 +51,7 @@ namespace RedOSPackageUpdater
         public int AuthRetryDelayMs { get; set; }    // пауза между попытками паролей (против блокировок)
         public int MaxAuthAttempts { get; set; }     // 0 = пробовать все из пула
         public int BackupKeep { get; set; }          // сколько бэкапов /root/rpu-backup-* хранить на хосте
-        public int UpdateTimeoutSec { get; set; }    // таймаут выполнения обновления на узле (yum)
+        public int UpdateTimeoutSec { get; set; }    // таймаут выполнения обновления на узле (DNF)
 
         public AppSettings()
         {

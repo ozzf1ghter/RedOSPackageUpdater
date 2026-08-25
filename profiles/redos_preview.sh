@@ -33,6 +33,12 @@ echo "Профиль: $PROFILE   Исключения: ${EXCLUDE:-(нет)}"
 # needs-restarting / versionlock не подтверждено - эта строка даёт след для диагностики, если что-то поедет не так.
 osname="$( (. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") 2>/dev/null)"
 [ -z "$osname" ] && osname="неизвестно"
+osver="$( (. /etc/os-release 2>/dev/null; echo "$VERSION_ID") 2>/dev/null)"
+case "$osver" in
+  7.3|8.0) ;;
+  *) echo "PREVIEW_ERR|RED OS ${osver:-unknown} пока не поддерживается"; exit 1;;
+esac
+command -v dnf >/dev/null 2>&1 || { echo "PREVIEW_ERR|DNF не найден"; exit 1; }
 dnfver="$(dnf --version 2>/dev/null | head -1 | tr -d '\n')"
 echo "OS_INFO|$osname|$(uname -r)|${dnfver:-?}"
 echo

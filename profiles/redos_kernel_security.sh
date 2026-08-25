@@ -13,6 +13,9 @@ echo "=== Исходное состояние ==="
 # ОС узла - машиночитаемый маркер для GUI (парк RED OS может быть смешанным: 7.3 и 8 одновременно).
 osname="$( (. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") 2>/dev/null)"
 [ -z "$osname" ] && osname="неизвестно"
+osver="$( (. /etc/os-release 2>/dev/null; echo "$VERSION_ID") 2>/dev/null)"
+case "$osver" in 7.3|8.0) ;; *) echo "ОШИБКА: RED OS ${osver:-unknown} пока не поддерживается этим профилем"; exit 1;; esac
+command -v dnf >/dev/null 2>&1 || { echo "ОШИБКА: DNF не найден"; exit 1; }
 echo "OS_INFO|$osname|$(uname -r)|$(dnf --version 2>/dev/null | head -1 | tr -d '\n')"
 uname -r
 grubby --default-kernel
@@ -35,8 +38,8 @@ uname -a > "$bkp/uname.txt" 2>/dev/null
 command -v grubby >/dev/null 2>&1 && grubby --info=ALL > "$bkp/grubby-info.before.txt" 2>/dev/null
 cp -a /etc/dnf/dnf.conf "$bkp/" 2>/dev/null
 [ -f /etc/sysconfig/kernel ] && cp -a /etc/sysconfig/kernel "$bkp/" 2>/dev/null
-yum history list 2>/dev/null | head -8 > "$bkp/yum-history.before.txt"
-echo "Бэкап: $bkp (откат security: yum history undo <id>)"
+dnf history list 2>/dev/null | head -8 > "$bkp/dnf-history.before.txt"
+echo "Бэкап: $bkp (откат security: dnf history undo <id>)"
 echo
 
 echo "=== Настраиваем kernel-lt и лимит ядер ==="
@@ -53,12 +56,12 @@ grep -q '^installonly_limit=' /etc/dnf/dnf.conf \
   || echo 'installonly_limit=3' >> /etc/dnf/dnf.conf
 
 echo "=== Обновляем метаданные репозиториев (чтобы видеть свежее зеркало, как в предпроверке) ==="
-yum clean expire-cache >/dev/null 2>&1 || true
-yum -q makecache >/dev/null 2>&1 || true
+dnf clean expire-cache >/dev/null 2>&1 || true
+dnf -q makecache >/dev/null 2>&1 || true
 
 echo "=== Обновляем ядро ==="
-yum check-update kernel-lt kernel-lt-tools kernel-lt-tools-libs || true
-if ! yum -y update kernel-lt kernel-lt-tools kernel-lt-tools-libs; then
+dnf check-update kernel-lt kernel-lt-tools kernel-lt-tools-libs || true
+if ! dnf -y update kernel-lt kernel-lt-tools kernel-lt-tools-libs; then
   echo "ОШИБКА: обновление kernel-lt завершилось с ошибкой"
   echo "RESULT: DO_NOT_REBOOT"
   echo "REBOOT_REQUIRED: no"
@@ -74,7 +77,7 @@ for m in $EXCLUDE; do exargs="$exargs --exclude=$m"; done
 set +f
 echo "ИСКЛЮЧЕНЫ из обновления (маски): ${EXCLUDE:-(нет)}"
 # Провал security-транзакции НЕ глушим: иначе узел рапортует OK, а патчи не легли (уязвим).
-if ! yum -y update --security $exargs; then
+if ! dnf -y update --security $exargs; then
   echo "ОШИБКА: security-обновление завершилось с ошибкой (патчи не применены)"
   echo "RESULT: DO_NOT_REBOOT"
   echo "REBOOT_REQUIRED: no"
@@ -163,20 +166,17 @@ expected="$latest_ver"
 def_now="$(grubby --default-kernel 2>/dev/null | sed 's#^/boot/vmlinuz-##')"
 [ -n "$def_now" ] && [ "$def_now" != "$expected" ] && echo "ВНИМАНИЕ: default-ядро ($def_now) != ожидаемого ($expected) - grubby мог не переключить default"
 
-# Нужен ли reboot по факту. Основной сигнал - needs-restarting -r (yum-utils/dnf-utils).
-# Если утилиты нет - пробуем доставить (пакет dnf-utils, стандартный, не зависит от версии ОС),
-# чтобы не сваливаться на более грубый fallback без явной необходимости.
-if ! command -v needs-restarting >/dev/null 2>&1; then
-  echo "needs-restarting не найден - пробую поставить dnf-utils"
-  yum -y install dnf-utils >/dev/null 2>&1 || true
-fi
+# Нужен ли reboot по факту. Поддерживаем отдельную команду и DNF-плагин,
+# ничего автоматически на узел не устанавливаем.
 reboot_required=no
 if command -v needs-restarting >/dev/null 2>&1; then
   if ! needs-restarting -r >/dev/null 2>&1; then
     reboot_required=yes
   fi
+elif dnf needs-restarting --help >/dev/null 2>&1; then
+  if ! dnf needs-restarting -r >/dev/null 2>&1; then reboot_required=yes; fi
 else
-  echo "ВНИМАНИЕ: needs-restarting недоступен (dnf-utils не встал) - решаю по ядру, менее точно"
+  echo "ВНИМАНИЕ: needs-restarting недоступен - решаю по ядру, менее точно"
   [ "$expected" != "$(uname -r)" ] && reboot_required=yes
 fi
 

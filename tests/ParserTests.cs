@@ -56,6 +56,7 @@ internal static class ParserTests
         Check(FstecLinuxCatalog.Applies("6.1.175", new[] { "до 6.1.180" }, out matched), "диапазон общего продукта Linux");
         Check(!FstecLinuxCatalog.Applies("5.15.10", new[] { "до 6.1.180" }, out matched), "ветки ядра не смешиваются");
         Check(FstecLinuxCatalog.RedOsVersion("RED OS MUROM (7.3) (6.1.175-1.el7.3.x86_64)") == "7.3", "версия RED OS извлекается из сведений узла");
+        Check(FstecLinuxCatalog.RedOsVersion("RED OS 8.0 (6.12.92-1.red80.x86_64)") == "8.0", "версия RED OS 8 извлекается из сведений узла");
         Check(FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.3", "8.0" }), "карточка БДУ применима к RED OS 7.3");
         Check(FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.3 МУРОМ" }), "вариант названия RED OS 7.3 распознаётся");
         Check(!FstecLinuxCatalog.AppliesToRedOs("7.3", new[] { "7.1 МУРОМ", "7.2 Муром" }), "старые выпуски RED OS не смешиваются с 7.3");
@@ -65,6 +66,8 @@ internal static class ParserTests
             !FstecLinuxCatalog.IsKernelPackage("kernelshark"), "пакеты ядра распознаются без ложных совпадений");
         Check(FstecLinuxCatalog.IsActiveKernelVersion("6.1.175-1.el7.3", "6.1.175") &&
             !FstecLinuxCatalog.IsActiveKernelVersion("6.1.162-1.el7.3", "6.1.175"), "резервные ядра отделяются от работающего");
+        Check(FstecLinuxCatalog.IsActiveKernelVersion("6.12.92-1.red80", "6.12.92") &&
+            !FstecLinuxCatalog.IsActiveKernelVersion("6.12.21-1.red80", "6.12.92"), "активное ядро RED OS 8 отделяется от резервного");
 
         var brokenConfig = new AppConfig
         {
@@ -102,6 +105,17 @@ internal static class ParserTests
         Check(VulnerabilityReportService.IsConfirmedBdu(reportFinding), "подтверждённая для RED OS БДУ попадает в отчёт ФСТЭК");
         reportFinding.DetectionKind = "INACTIVE_KERNEL";
         Check(!VulnerabilityReportService.IsConfirmedBdu(reportFinding), "уязвимость резервного ядра не считается активной");
+        reportFinding.DetectionKind = "REDOS_ADVISORY";
+        Check(VulnerabilityReportService.IsConfirmedBdu(reportFinding), "security advisory RED OS подтверждает связанную БДУ");
+        var advisoryHost = new HostResult();
+        var advisoryCve = new VulnerabilityFinding { Id = "CVE-2026-39316", Package = "cups", InstalledVersion = "1:2.4.7-3.red80", FixedVersion = "1:2.4.7-6.red80", Severity = "HIGH" };
+        advisoryCve.Aliases.Add("ROS-20260825-01");
+        advisoryHost.Vulnerabilities.Add(advisoryCve);
+        var advisoryRecord = new LinuxBduRecord { Id = "BDU:2026-05932", Title = "Уязвимость CUPS", Severity = "HIGH", Published = "2026-04-05" };
+        advisoryRecord.Cves.Add("CVE-2026-39316");
+        Check(FstecLinuxCatalog.ExpandRedOsAdvisoriesForTest(advisoryHost, new[] { advisoryRecord }) == 1 &&
+            advisoryHost.Vulnerabilities.Count == 2 && advisoryHost.Vulnerabilities[1].DetectionKind == "REDOS_ADVISORY" &&
+            advisoryHost.Vulnerabilities[1].FixedVersion == "1:2.4.7-6.red80", "CVE из RED OS advisory связывается с БДУ и сохраняет исправление");
         Check(VulnerabilityReportService.Csv("a;\"b\"") == "\"a;\"\"b\"\"\"", "CSV корректно экранирует разделители и кавычки");
 
         string secret = Crypto.EncryptPortable("данные", "достаточно-длинный-пароль");

@@ -6,6 +6,9 @@
 echo "=== Исходное состояние ==="
 osname="$( (. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") 2>/dev/null)"
 [ -z "$osname" ] && osname="неизвестно"
+osver="$( (. /etc/os-release 2>/dev/null; echo "$VERSION_ID") 2>/dev/null)"
+case "$osver" in 7.3|8.0) ;; *) echo "ОШИБКА: RED OS ${osver:-unknown} пока не поддерживается этим профилем"; exit 1;; esac
+command -v dnf >/dev/null 2>&1 || { echo "ОШИБКА: DNF не найден"; exit 1; }
 echo "OS_INFO|$osname|$(uname -r)|$(dnf --version 2>/dev/null | head -1 | tr -d '\n')"
 uname -r
 grubby --default-kernel
@@ -27,7 +30,7 @@ uname -a > "$bkp/uname.txt" 2>/dev/null
 command -v grubby >/dev/null 2>&1 && grubby --info=ALL > "$bkp/grubby-info.before.txt" 2>/dev/null
 cp -a /etc/dnf/dnf.conf "$bkp/" 2>/dev/null
 [ -f /etc/sysconfig/kernel ] && cp -a /etc/sysconfig/kernel "$bkp/" 2>/dev/null
-yum history list 2>/dev/null | head -8 > "$bkp/yum-history.before.txt"
+dnf history list 2>/dev/null | head -8 > "$bkp/dnf-history.before.txt"
 echo "Бэкап: $bkp"
 echo
 
@@ -45,8 +48,8 @@ grep -q '^installonly_limit=' /etc/dnf/dnf.conf \
   || echo 'installonly_limit=3' >> /etc/dnf/dnf.conf
 
 echo "=== Обновляем только ядро (kernel-lt) ==="
-yum check-update kernel-lt kernel-lt-tools kernel-lt-tools-libs || true
-if ! yum -y update kernel-lt kernel-lt-tools kernel-lt-tools-libs; then
+dnf check-update kernel-lt kernel-lt-tools kernel-lt-tools-libs || true
+if ! dnf -y update kernel-lt kernel-lt-tools kernel-lt-tools-libs; then
   echo "ОШИБКА: обновление kernel-lt завершилось с ошибкой"
   echo "RESULT: DO_NOT_REBOOT"
   echo "REBOOT_REQUIRED: no"
@@ -136,6 +139,8 @@ def_now="$(grubby --default-kernel 2>/dev/null | sed 's#^/boot/vmlinuz-##')"
 reboot_required=no
 if command -v needs-restarting >/dev/null 2>&1; then
   if ! needs-restarting -r >/dev/null 2>&1; then reboot_required=yes; fi
+elif dnf needs-restarting --help >/dev/null 2>&1; then
+  if ! dnf needs-restarting -r >/dev/null 2>&1; then reboot_required=yes; fi
 fi
 [ "$expected" != "$(uname -r)" ] && reboot_required=yes
 

@@ -17,6 +17,7 @@ namespace RedOSPackageUpdater
         public const string PostCheck = "redos_postcheck.sh";
         public const string PkgOp = "redos_pkgop.sh";
         public const string VulnScan = "redos_vuln_scan.sh";
+        public const string AdvisoryScan = "redos_advisory_scan.sh";
 
         // Скрипты неизменны в течение жизни процесса (это embedded resources внутри самого exe),
         // а Read() дёргается на каждый узел при массовом обновлении - кешируем, чтобы не гонять

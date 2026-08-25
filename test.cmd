@@ -24,6 +24,8 @@ if exist "%BASH_EXE%" (
     "%BASH_EXE%" -n "%%S"
     if errorlevel 1 exit /b 1
   )
-  echo OK   синтаксис shell-профилей
+  echo OK   shell profile syntax
+  "%BASH_EXE%" tests\AdvisoryScriptTests.sh
+  if errorlevel 1 exit /b 1
 )
 exit /b %RESULT%

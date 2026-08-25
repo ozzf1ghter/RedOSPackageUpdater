@@ -79,24 +79,10 @@ if [ -n "${VULN_DB_ARCHIVE:-}" ]; then
 fi
 
 if ! command -v trivy >/dev/null 2>&1; then
-  echo "=== Trivy не установлен, устанавливаем из репозитория узла ==="
-  installer=""
-  command -v dnf >/dev/null 2>&1 && installer="dnf"
-  [ -z "$installer" ] && command -v yum >/dev/null 2>&1 && installer="yum"
-  if [ -z "$installer" ] || ! "$installer" -y install trivy; then
-    echo "PKGOP_ERR|Trivy отсутствует и не установлен: проверьте наличие пакета trivy во внутреннем репозитории"
-    echo "PKGOP_RESULT: FAIL"
-    echo "REBOOT_RECOMMENDED: no"
-    exit 1
-  fi
-  hash -r
-  if ! command -v trivy >/dev/null 2>&1; then
-    echo "PKGOP_ERR|Менеджер пакетов завершился без ошибки, но команда trivy не появилась"
-    echo "PKGOP_RESULT: FAIL"
-    echo "REBOOT_RECOMMENDED: no"
-    exit 1
-  fi
-  echo "TRIVY_INSTALLED: yes"
+  echo "PKGOP_ERR|Дополнительный детектор Trivy не установлен; автоматическая установка отключена"
+  echo "PKGOP_RESULT: FAIL"
+  echo "REBOOT_RECOMMENDED: no"
+  exit 1
 else
   echo "TRIVY_INSTALLED: no"
 fi

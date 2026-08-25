@@ -280,7 +280,7 @@ namespace RedOSPackageUpdater
             // Архив базы большой, поэтому считаем его digest один раз на весь пакетный запуск,
             // а не заново в каждом из параллельных потоков для каждого узла.
             string localDbDigest = null;
-            if (action == "vuln")
+            if (action == "vuln" && !string.IsNullOrEmpty(localDbArchive))
             {
                 ct.ThrowIfCancellationRequested();
                 if (string.IsNullOrEmpty(localDbArchive) || !File.Exists(localDbArchive))
@@ -324,11 +324,14 @@ namespace RedOSPackageUpdater
             try
             {
                 string dbPrefix = "";
-                if (action == "vuln") dbPrefix = PrepareVulnerabilityDb(client, node, used, localDbArchive, localDbDigest, settings, log, ct);
+                if (action == "vuln" && !string.IsNullOrEmpty(localDbArchive)) dbPrefix = PrepareVulnerabilityDb(client, node, used, localDbArchive, localDbDigest, settings, log, ct);
                 Phase(node.Host, action == "vuln" ? "scan" : (dryRun ? "preview" : "update"));
                 string prefix = "ACTION='" + Sh(action) + "'\nPKGS='" + Sh(pkgs) + "'\n";
                 prefix += dbPrefix;
-                string vulnerabilityRunId = action == "vuln" ? Guid.NewGuid().ToString("N") : null;
+                // PID-файл нужен только старому дополнительному Trivy-профилю. Штатный
+                // updateinfo-детектор не запускает долгоживущий дочерний процесс.
+                string vulnerabilityRunId = action == "vuln" && !string.IsNullOrEmpty(localDbArchive)
+                    ? Guid.NewGuid().ToString("N") : null;
                 if (vulnerabilityRunId != null) prefix += "RPU_SCAN_ID='" + vulnerabilityRunId + "'\n";
                 if (dryRun) prefix += "DRYRUN='1'\n";
                 int timeout = settings.UpdateTimeoutSec > 0 ? settings.UpdateTimeoutSec : PkgOpTimeoutSec;
@@ -354,18 +357,15 @@ namespace RedOSPackageUpdater
                 {
                     if (result == "OK")
                     {
-                        int bduFixable = 0;
-                        foreach (var v in res.Vulnerabilities)
-                            if (v.Id.StartsWith("BDU:", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(v.FixedVersion)) bduFixable++;
                         res.Status = vulnTotal > 0 ? HostStatus.Warn : HostStatus.Ok;
                         res.UpdateResult = "кандидатов: " + vulnTotal;
-                        res.Note = vulnTotal > 0 ? ("совпадений Trivy/БДУ: " + vulnBdu + " (с исправлением: " + bduFixable + "), критических: " + vulnCritical + ", высоких: " + vulnHigh + "; применимость к версии RED OS — в отчёте") : "уязвимостей не найдено";
+                        res.Note = vulnTotal > 0 ? ("CVE в доступных RED OS advisory: " + vulnTotal + " (БДУ будут сопоставлены в отчёте), критических: " + vulnCritical + ", высоких: " + vulnHigh) : "доступных security advisory не найдено";
                         if (trivyInstalled == "yes") res.Note += "; Trivy установлен автоматически";
                     }
                     else
                     {
                         res.Status = HostStatus.Fail;
-                        res.Note = !string.IsNullOrEmpty(nomatch) ? nomatch : "проверка Trivy завершилась ошибкой";
+                        res.Note = !string.IsNullOrEmpty(nomatch) ? nomatch : "проверка RED OS updateinfo завершилась ошибкой";
                     }
                 }
                 else if (result == "OK" && !string.IsNullOrEmpty(nomatch))

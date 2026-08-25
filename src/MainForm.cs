@@ -1144,25 +1144,23 @@ namespace RedOSPackageUpdater
         private void RunVulnerabilityScan()
         {
             if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
-            if (!VulnerabilityDb.Exists) { AppDialog.Info(this, "Нет базы уязвимостей", "Сначала загрузите или импортируйте базу в разделе «Уязвимости ФСТЭК»."); return; }
             var targets = DedupeByHost(CollectChecked());
             if (targets.Count == 0) { AppDialog.Info(this, "Нет выбранных серверов", "Отметьте серверы для проверки."); return; }
             if (!Preflight(targets)) return;
             if (!AppDialog.Confirm(this, "Проверка уязвимостей ФСТЭК",
-                "Проверить " + targets.Count + " узлов по базе БДУ ФСТЭК?\n\n" +
-                "Если Trivy отсутствует, программа установит его из репозитория узла. " +
-                "Серверы не перезагружаются.", "Проверить")) return;
+                "Проверить " + targets.Count + " узлов по security advisory RED OS и связать CVE с БДУ ФСТЭК?\n\n" +
+                "Trivy и дополнительные пакеты на узлах не устанавливаются. Серверы не перезагружаются.", "Проверить")) return;
 
             string logDir = NewLogDir("vuln_");
             Directory.CreateDirectory(logDir);
             ResetSummary(targets, "Уязвимости ФСТЭК. Полный список — в логе каждого узла.");
             var orch = NewOrchestrator(true);
             WireHostCallbacks(orch);
-            string script = Profiles.Read(Profiles.VulnScan);
+            string script = Profiles.Read(Profiles.AdvisoryScan);
 
             StartOperation("Проверка ФСТЭК на " + targets.Count + " узлах...", token =>
             {
-                var res = orch.RunPkgOp(targets, "vuln", "", true, script, _cfg.Settings, logDir, token, VulnerabilityDb.ArchivePath);
+                var res = orch.RunPkgOp(targets, "vuln", "", true, script, _cfg.Settings, logDir, token);
                 res = OrderLikeTargets(res, targets, r => r.Host);
                 Ui(() => { ReportBatchStatus(res); WriteSummaryFile(logDir, res); WriteVulnerabilityReport(logDir, res); });
             });
@@ -1180,7 +1178,7 @@ namespace RedOSPackageUpdater
                 AppendLog("Подтверждено для версии ОС: " + output.ConfirmedBduCount + "; исключено неподтверждённых/неприменимых совпадений: " + output.RejectedBduCount);
                 AppendLog("Расширенный отчёт: " + output.AllCsvPath);
                 AppendLog("HTML-отчёт: " + htmlPath);
-                if (output.LinuxFindingsAdded > 0) AppendLog("Дополнительная проверка общего продукта Linux: добавлено " + output.LinuxFindingsAdded + " находок по версии работающего ядра");
+                if (output.LinuxFindingsAdded > 0) AppendLog("Сопоставление advisory/общего Linux с БДУ: добавлено " + output.LinuxFindingsAdded + " подтверждённых записей");
             }
             catch (Exception ex) { AppendLog("Не удалось сформировать отчёт ФСТЭК: " + ex.Message); }
         }
@@ -1286,9 +1284,9 @@ namespace RedOSPackageUpdater
                     {
                         Ui(() => UpdateVulnerabilityDbProgress(progress.Percent,
                             progress.Done / (1024 * 1024), progress.Total > 0 ? progress.Total / (1024 * 1024) : 0,
-                            progress.Stage == VulnerabilityDatabaseStage.TrivyDatabase ? "База Trivy/БДУ" : "Каталог применимости ФСТЭК"));
+                            progress.Stage == VulnerabilityDatabaseStage.TrivyDatabase ? "Дополнительная база Trivy" : "Каталог БДУ ФСТЭК"));
                     }, token);
-                    Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "База уязвимостей и каталог применимости к версиям RED OS успешно обновлены."); });
+                    Ui(() => { RefreshVulnerabilityDbStatus(); AppDialog.Info(this, "ФСТЭК", "Каталог БДУ ФСТЭК успешно обновлён."); });
                 }
                 catch (OperationCanceledException) { Ui(() => SetStatus("Загрузка базы ФСТЭК отменена")); }
                 catch (Exception ex) { Ui(() => { SetStatus("Ошибка загрузки базы ФСТЭК"); AppDialog.Error(this, "ФСТЭК", "Не удалось обновить базу:\n" + ex.Message); }); }
@@ -1332,7 +1330,7 @@ namespace RedOSPackageUpdater
         private void ImportVulnerabilityDb()
         {
             if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
-            using (var d = new OpenFileDialog { Title = "Архив базы Trivy или официальная XML-выгрузка ФСТЭК", Filter = "Базы ФСТЭК|*.tar.gz;*.tgz;*.zip|Все файлы|*.*" })
+            using (var d = new OpenFileDialog { Title = "Официальная XML-выгрузка или компактный каталог ФСТЭК", Filter = "Каталог ФСТЭК|*.zip|Дополнительная база Trivy|*.tar.gz;*.tgz|Все файлы|*.*" })
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 try

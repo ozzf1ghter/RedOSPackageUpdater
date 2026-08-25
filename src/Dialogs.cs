@@ -474,7 +474,7 @@ namespace RedOSPackageUpdater
             Section("Выполнение", ref y);
             _par = Row("Одновременных узлов", s.MaxParallel, 1, 100, ref y);
             _conn = Row("Подключение по SSH", s.ConnectTimeoutSec, 1, 120, ref y, "сек.");
-            _updto = Row("Операция yum/dnf", s.UpdateTimeoutSec > 0 ? s.UpdateTimeoutSec : 1800, 60, 14400, ref y, "сек.");
+            _updto = Row("Операция DNF", s.UpdateTimeoutSec > 0 ? s.UpdateTimeoutSec : 1800, 60, 14400, ref y, "сек.");
 
             Section("Перезагрузка и сервисы", ref y);
             _initDelay = Row("Пауза после команды reboot", s.InitialRebootDelaySec, 0, 120, ref y, "сек.");

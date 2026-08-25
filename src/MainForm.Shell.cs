@@ -222,7 +222,7 @@ namespace RedOSPackageUpdater
             var execution = SettingsCard("Выполнение", new string[] {
                 "Одновременных узлов: " + _cfg.Settings.MaxParallel,
                 "Таймаут SSH: " + _cfg.Settings.ConnectTimeoutSec + " сек.",
-                "Таймаут yum/dnf: " + _cfg.Settings.UpdateTimeoutSec + " сек.",
+                "Таймаут DNF: " + _cfg.Settings.UpdateTimeoutSec + " сек.",
                 "Попыток авторизации: " + (_cfg.Settings.MaxAuthAttempts == 0 ? "все" : _cfg.Settings.MaxAuthAttempts.ToString())
             });
             var reboot = SettingsCard("Перезагрузка и сервисы", new string[] {

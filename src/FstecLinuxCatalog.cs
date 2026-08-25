@@ -99,11 +99,20 @@ namespace RedOSPackageUpdater
             var byId = catalog.Where(r => r != null && !string.IsNullOrWhiteSpace(r.Id))
                 .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            var byCve = new Dictionary<string, List<LinuxBduRecord>>(StringComparer.OrdinalIgnoreCase);
+            foreach (LinuxBduRecord record in catalog)
+                foreach (string cve in record != null ? record.Cves ?? new List<string>() : new List<string>())
+                {
+                    List<LinuxBduRecord> values;
+                    if (!byCve.TryGetValue(cve, out values)) byCve[cve] = values = new List<LinuxBduRecord>();
+                    values.Add(record);
+                }
             int added = 0;
             foreach (HostResult host in results)
             {
                 if (host == null) continue;
                 if (host.Vulnerabilities == null) host.Vulnerabilities = new List<VulnerabilityFinding>();
+                added += ExpandRedOsAdvisories(host, byCve);
                 ClassifyPackageFindings(host, byId);
                 string kernel = KernelVersion(host.OsInfo);
                 if (kernel.Length == 0) continue;
@@ -128,11 +137,66 @@ namespace RedOSPackageUpdater
             return added;
         }
 
+        // DNF updateinfo является доказательством именно от производителя RED OS: пакет на
+        // узле уязвим и для него доступно исправление. Поэтому связанная БДУ подтверждается
+        // даже когда старая карточка ФСТЭК ещё не перечисляет текущий выпуск RED OS либо
+        // описывает ПО как общий свободный продукт. Исходную CVE оставляем в полном отчёте.
+        private static int ExpandRedOsAdvisories(HostResult host, IDictionary<string, List<LinuxBduRecord>> byCve)
+        {
+            int added = 0;
+            var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (VulnerabilityFinding finding in host.Vulnerabilities)
+                if (finding != null) known.Add((finding.Id ?? "") + "\n" + (finding.Package ?? ""));
+
+            foreach (VulnerabilityFinding source in host.Vulnerabilities.ToList())
+            {
+                if (source == null || !(source.Id ?? "").StartsWith("CVE-", StringComparison.OrdinalIgnoreCase) ||
+                    !(source.Aliases ?? new List<string>()).Any(a => (a ?? "").StartsWith("ROS-", StringComparison.OrdinalIgnoreCase))) continue;
+                List<LinuxBduRecord> records;
+                if (!byCve.TryGetValue(source.Id, out records)) continue;
+                foreach (LinuxBduRecord record in records)
+                {
+                    string key = record.Id + "\n" + (source.Package ?? "");
+                    if (!known.Add(key)) continue;
+                    var finding = new VulnerabilityFinding
+                    {
+                        Id = record.Id, Package = source.Package, InstalledVersion = source.InstalledVersion,
+                        FixedVersion = source.FixedVersion,
+                        Severity = string.IsNullOrWhiteSpace(source.Severity) || source.Severity == "UNKNOWN" ? record.Severity : source.Severity,
+                        Title = record.Title, PublishedDate = record.Published, LastModifiedDate = record.Modified,
+                        PrimaryUrl = "https://bdu.fstec.ru/vul/" + record.Id.Substring(4),
+                        DetectionKind = "REDOS_ADVISORY",
+                        AffectedRange = "Подтверждено доступным security advisory RED OS"
+                    };
+                    finding.Aliases.Add(source.Id.ToUpperInvariant());
+                    foreach (string alias in source.Aliases ?? new List<string>()) AddUnique(finding.Aliases, alias);
+                    foreach (string reference in source.References ?? new List<string>()) AddUnique(finding.References, reference);
+                    host.Vulnerabilities.Add(finding);
+                    added++;
+                }
+            }
+            return added;
+        }
+
+        internal static int ExpandRedOsAdvisoriesForTest(HostResult host, IEnumerable<LinuxBduRecord> records)
+        {
+            var byCve = new Dictionary<string, List<LinuxBduRecord>>(StringComparer.OrdinalIgnoreCase);
+            foreach (LinuxBduRecord record in records ?? new LinuxBduRecord[0])
+                foreach (string cve in record != null ? record.Cves ?? new List<string>() : new List<string>())
+                {
+                    List<LinuxBduRecord> values;
+                    if (!byCve.TryGetValue(cve, out values)) byCve[cve] = values = new List<LinuxBduRecord>();
+                    values.Add(record);
+                }
+            return ExpandRedOsAdvisories(host, byCve);
+        }
+
         private static bool HasApplicabilitySchema(List<LinuxBduRecord> records)
         {
             LinuxBduRecord sentinel = (records ?? new List<LinuxBduRecord>()).FirstOrDefault(r =>
                 r != null && string.Equals(r.Id, "BDU:2026-05932", StringComparison.OrdinalIgnoreCase));
-            return sentinel != null && (sentinel.RedOsVersions ?? new List<string>()).Any(v => SameOsVersion("7.3", v));
+            return sentinel != null && (sentinel.RedOsVersions ?? new List<string>()).Any(v => SameOsVersion("7.3", v)) &&
+                   (sentinel.RedOsVersions ?? new List<string>()).Any(v => SameOsVersion("8.0", v));
         }
 
         private static void EnsureBundledCatalog()
@@ -165,7 +229,8 @@ namespace RedOSPackageUpdater
             foreach (VulnerabilityFinding finding in host.Vulnerabilities)
             {
                 if (finding == null || !(finding.Id ?? "").StartsWith("BDU:", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(finding.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase)) continue;
+                    string.Equals(finding.DetectionKind, "LINUX_GENERAL", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(finding.DetectionKind, "REDOS_ADVISORY", StringComparison.OrdinalIgnoreCase)) continue;
                 // RPM keeps several kernel versions intentionally. Trivy rootfs sees
                 // every installed kernel RPM, but only uname -r identifies the code
                 // that is actually running. Old fallback kernels must remain in the

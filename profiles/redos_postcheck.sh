@@ -15,7 +15,7 @@ echo "Установленные kernel-lt:"
 rpm -q kernel-lt | sort -V
 echo
 echo "Установленные пакеты kernel:"
-yum list installed 2>/dev/null | grep -E '^kernel-' || true
+dnf list installed 2>/dev/null | grep -E '^kernel-' || true
 echo
 echo "Аптайм:"
 uptime

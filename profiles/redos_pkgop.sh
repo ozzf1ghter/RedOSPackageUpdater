@@ -32,6 +32,9 @@ fi
 
 osname="$( (. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") 2>/dev/null)"
 [ -z "$osname" ] && osname="неизвестно"
+osver="$( (. /etc/os-release 2>/dev/null; echo "$VERSION_ID") 2>/dev/null)"
+case "$osver" in 7.3|8.0) ;; *) echo "PKGOP_ERR|RED OS ${osver:-unknown} пока не поддерживается"; echo "PKGOP_RESULT: FAIL"; echo "REBOOT_RECOMMENDED: no"; exit 1;; esac
+command -v dnf >/dev/null 2>&1 || { echo "PKGOP_ERR|DNF не найден"; echo "PKGOP_RESULT: FAIL"; echo "REBOOT_RECOMMENDED: no"; exit 1; }
 echo "OS_INFO|$osname|$(uname -r)|$(dnf --version 2>/dev/null | head -1 | tr -d '\n')"
 echo "=== Действие: $ACTION ; пакеты: ${PKGS:-(все)} ==="
 
@@ -86,7 +89,7 @@ if [ "$ACTION" = "lock" ] || [ "$ACTION" = "unlock" ] || [ "$ACTION" = "locklist
   # --- предпроверка lock/unlock: показываем, что изменится, ничего не пишем ---
   if [ "${DRYRUN:-0}" = "1" ]; then
     echo "=== Предпроверка (dry-run), файл блокировок не меняется ==="
-    [ "$plugin_ok" = "0" ] && echo "PKGOP_ERR|плагин versionlock не установлен (при запуске он будет поставлен автоматически: python3-dnf-plugin-versionlock)"
+    [ "$plugin_ok" = "0" ] && echo "PKGOP_ERR|плагин versionlock не установлен; автоматическая установка отключена"
     n=0
     for p in $PKGS; do
       already="$(find_lock "$p")"
@@ -116,11 +119,8 @@ if [ "$ACTION" = "lock" ] || [ "$ACTION" = "unlock" ] || [ "$ACTION" = "locklist
 
   # --- боевой прогон lock/unlock ---
   if [ "$plugin_ok" = "0" ]; then
-    echo "=== Плагин versionlock отсутствует, ставим python3-dnf-plugin-versionlock ==="
-    if ! yum -y install python3-dnf-plugin-versionlock; then
-      echo "не удалось установить плагин versionlock"
-      echo "PKGOP_RESULT: FAIL"; echo "REBOOT_RECOMMENDED: no"; exit 1
-    fi
+    echo "PKGOP_ERR|Плагин versionlock не установлен; установите его штатно перед операцией"
+    echo "PKGOP_RESULT: FAIL"; echo "REBOOT_RECOMMENDED: no"; exit 1
   fi
   bkp="/root/rpu-vlock-$(date +%F_%H%M%S)"; mkdir -p "$bkp"
   cp -a "$LOCKFILE" "$bkp/versionlock.list.before" 2>/dev/null || true
@@ -163,10 +163,10 @@ fi
 # --- Режим предпроверки (dry-run): ничего не ставим, только показываем, что уедет ---
 if [ "${DRYRUN:-0}" = "1" ]; then
   echo "=== Предпроверка (dry-run), ничего не ставится ==="
-  yum clean expire-cache >/dev/null 2>&1 || true
-  yum -q makecache >/dev/null 2>&1 || true
+  dnf clean expire-cache >/dev/null 2>&1 || true
+  dnf -q makecache >/dev/null 2>&1 || true
   dperr="$(mktemp 2>/dev/null || echo "/tmp/rpu_pkgprev.$$")"
-  out="$(yum "$ACTION" $PKGS --assumeno 2>"$dperr")"
+  out="$(dnf "$ACTION" $PKGS --assumeno 2>"$dperr")"
   # пакет не найден в репозитории - это не "нечего делать", а ошибка ввода. Показываем.
   nomatch="$(grep -iE 'No match for argument|Unable to find a match|No package .* available|Нет пакета' "$dperr" 2>/dev/null | head -3 | tr '\n' ';' | cut -c1-200)"
   rm -f "$dperr"
@@ -200,21 +200,21 @@ if [ "${DRYRUN:-0}" = "1" ]; then
   exit 0
 fi
 
-# Бэкап списка пакетов для отката (yum history undo <id>)
+# Бэкап списка пакетов для отката (dnf history undo <id>)
 bkp="/root/rpu-pkgop-$(date +%F_%H%M%S)"; mkdir -p "$bkp"
 before="$bkp/rpm-qa.before.txt"; after="$bkp/rpm-qa.after.txt"
 rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' 2>/dev/null | sort > "$before"
-yum history list 2>/dev/null | head -6 > "$bkp/yum-history.before.txt"
-echo "Бэкап списка пакетов: $bkp (откат: yum history undo <id>)"
+dnf history list 2>/dev/null | head -6 > "$bkp/dnf-history.before.txt"
+echo "Бэкап списка пакетов: $bkp (откат: dnf history undo <id>)"
 
 # Метаданные - чтобы видеть свежее зеркало (как в предпроверке/обновлении)
 echo "=== Обновляем метаданные ==="
-yum clean expire-cache >/dev/null 2>&1 || true
-yum -q makecache >/dev/null 2>&1 || true
+dnf clean expire-cache >/dev/null 2>&1 || true
+dnf -q makecache >/dev/null 2>&1 || true
 
-echo "=== Выполняем: yum -y $ACTION $PKGS ==="
+echo "=== Выполняем: dnf -y $ACTION $PKGS ==="
 rc=0
-yum -y "$ACTION" $PKGS || rc=$?
+dnf -y "$ACTION" $PKGS || rc=$?
 
 # Что реально изменилось - диф по СТРОКАМ (имя+версия), а не по имени.
 # Иначе installonly-пакеты (kernel-lt держит несколько версий сразу) дают ложные "upgrade".
@@ -247,7 +247,7 @@ fi
 
 echo "Изменено пакетов: $changed"
 if [ "$rc" -ne 0 ]; then
-  echo "yum завершился с кодом $rc"
+  echo "dnf завершился с кодом $rc"
   echo "PKGOP_RESULT: FAIL"
 elif [ "$changed" -eq 0 ]; then
   echo "PKGOP_RESULT: NOTHING"
