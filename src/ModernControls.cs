@@ -99,14 +99,14 @@ namespace RedOSPackageUpdater
                 int groupWidth = 16 + 7 + Math.Min(measured.Width, Math.Max(0, Width - 30));
                 int groupLeft = Math.Max(8, (Width - groupWidth) / 2);
                 AppIcons.Draw(e.Graphics, IconName, fore, new Rectangle(groupLeft, Height / 2 - 8, 16, 16));
-                textRect = new Rectangle(groupLeft + 23, 0, Math.Max(1, Width - groupLeft - 27), Height);
+                textRect = new Rectangle(groupLeft + 23, 1, Math.Max(1, Width - groupLeft - 27), Math.Max(1, Height - 1));
                 flags &= ~TextFormatFlags.HorizontalCenter;
                 flags |= TextFormatFlags.Left;
             }
             else
             {
                 if (hasIcon) AppIcons.Draw(e.Graphics, IconName, fore, new Rectangle(10, Height / 2 - 8, 16, 16));
-                textRect = new Rectangle(Padding.Left + 3 + iconOffset, 0, Math.Max(1, Width - Padding.Horizontal - 6 - iconOffset), Height);
+                textRect = new Rectangle(Padding.Left + 3 + iconOffset, 1, Math.Max(1, Width - Padding.Horizontal - 6 - iconOffset), Math.Max(1, Height - 1));
             }
             TextRenderer.DrawText(e.Graphics, Text, Font, textRect, fore, flags);
             if (Focused && ShowFocusCues)
@@ -351,10 +351,10 @@ namespace RedOSPackageUpdater
             else
             {
                 int editorHeight = _editor.PreferredHeight;
-                _editor.SetBounds(horizontalPadding, Math.Max(1, (Height - editorHeight) / 2),
+                _editor.SetBounds(horizontalPadding, Math.Max(1, (Height - editorHeight) / 2 + 1),
                     Math.Max(1, Width - horizontalPadding * 2), editorHeight);
             }
-            _placeholderLabel.SetBounds(horizontalPadding, 1, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 2));
+            _placeholderLabel.SetBounds(horizontalPadding, 2, Math.Max(1, Width - horizontalPadding * 2), Math.Max(1, Height - 2));
             ApplyPlaceholder();
         }
     }
@@ -389,7 +389,7 @@ namespace RedOSPackageUpdater
                     e.Graphics.DrawLines(pen, new[] { new Point(5, box.Top + 8), new Point(8, box.Top + 11), new Point(14, box.Top + 5) });
                 }
             }
-            var textRect = new Rectangle(25, 0, Math.Max(0, Width - 25), Height);
+            var textRect = new Rectangle(25, 1, Math.Max(0, Width - 25), Math.Max(1, Height - 1));
             TextRenderer.DrawText(e.Graphics, Text, Font, textRect, Enabled ? Theme.Text : Theme.Disabled,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics, textRect, Theme.Text, BackColor);
@@ -433,7 +433,10 @@ namespace RedOSPackageUpdater
                 int buttonWidth = Math.Max(22, Height - 2);
                 var button = new Rectangle(Math.Max(1, Width - buttonWidth - 1), 1,
                     Math.Max(1, buttonWidth), Math.Max(1, Height - 2));
+                GraphicsState buttonState = g.Save();
+                using (GraphicsPath clipPath = ModernButton.Rounded(bounds, 6)) g.SetClip(clipPath);
                 using (var fill = new SolidBrush(Enabled ? BackColor : Theme.HeaderBg)) g.FillRectangle(fill, button);
+                g.Restore(buttonState);
                 int cx = button.Left + button.Width / 2;
                 int cy = button.Top + button.Height / 2;
                 Point[] arrow = { new Point(cx - 4, cy - 2), new Point(cx + 4, cy - 2), new Point(cx, cy + 3) };
@@ -448,7 +451,7 @@ namespace RedOSPackageUpdater
             bool selected = (e.State & DrawItemState.Selected) != 0;
             Color back = selected ? Theme.Sel : Theme.Surface;
             using (var brush = new SolidBrush(back)) e.Graphics.FillRectangle(brush, e.Bounds);
-            var textRect = new Rectangle(e.Bounds.Left + 9, e.Bounds.Top, Math.Max(1, e.Bounds.Width - 14), e.Bounds.Height);
+            var textRect = new Rectangle(e.Bounds.Left + 9, e.Bounds.Top + 1, Math.Max(1, e.Bounds.Width - 14), Math.Max(1, e.Bounds.Height - 1));
             TextRenderer.DrawText(e.Graphics, Convert.ToString(Items[e.Index]), Font, textRect, Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if ((e.State & DrawItemState.Focus) != 0 && !selected) e.DrawFocusRectangle();

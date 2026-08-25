@@ -102,6 +102,12 @@ Assert-Ui $compactServerActions 'server action bar fits its minimum width'
 $comboHasCompleteChrome = $controls -match 'class ModernComboBox[\s\S]*?DrawChrome' -and
     $controls -match 'Graphics\.FromHwnd\(Handle\)' -and $controls -match 'corners\.Exclude\(path\)'
 Assert-Ui $comboHasCompleteChrome 'combo boxes draw rounded chrome and dropdown button'
+$opticalVerticalCenter = $controls -match 'textRect = new Rectangle\(groupLeft \+ 23, 1' -and
+    $controls -match '\(Height - editorHeight\) / 2 \+ 1' -and $controls -match 'e\.Bounds\.Top \+ 1'
+Assert-Ui $opticalVerticalCenter 'buttons and fields share the optical text baseline'
+$comboFillIsClipped = $controls -match 'GraphicsState buttonState = g\.Save\(\)' -and
+    $controls -match 'g\.SetClip\(clipPath\)'
+Assert-Ui $comboFillIsClipped 'combo dropdown fill cannot restore square corners'
 $transparentIconPipeline = $chrome -match 'new Rectangle\(14,11,16,16\)' -and
     ([IO.File]::ReadAllText((Join-Path $project 'tools\Extract-ApprovedIcon.ps1'))) -match 'Clear-ConnectedBoardBackground'
 Assert-Ui $transparentIconPipeline 'icon pipeline removes board corners and uses an exact title-bar frame'
