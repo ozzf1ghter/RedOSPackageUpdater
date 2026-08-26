@@ -28,10 +28,10 @@ namespace RedOSPackageUpdater
             // Внутренняя ширина страницы меньше ширины окна из-за навигации. При 1240px
             // окно даёт около 1026px рабочей области: полный режим здесь перекрывал сценарий.
             result.Compact = width < 1180;
-            result.ShortLabels = width < 850;
-            result.PreviewWidth = result.ShortLabels ? 112 : 146;
+            result.ShortLabels = width < 900;
+            result.PreviewWidth = result.ShortLabels ? 116 : 164;
             result.RunWidth = result.ShortLabels ? 126 : 194;
-            result.StopWidth = 104;
+            result.StopWidth = result.ShortLabels ? 90 : 124;
             int right = width - 12;
             result.StatusLeft = right - statusWidth;
             int actionRight = result.Compact ? right : result.StatusLeft - 8;

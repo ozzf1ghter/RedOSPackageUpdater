@@ -221,7 +221,7 @@ namespace RedOSPackageUpdater
             var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 7, 0, 0), BackColor = Theme.SidebarBg };
             Theme.EdgeLine(leftButtons, DockStyle.Top);
             var addSystem = AddCompactBtn(leftButtons, "Группа", 92, () => AddSystem()); ((ModernButton)addSystem).IconName = "add";
-            var addNode = AddCompactBtn(leftButtons, "Сервер", 82, () => AddNode()); ((ModernButton)addNode).IconName = "add";
+            var addNode = AddCompactBtn(leftButtons, "Сервер", 96, () => AddNode()); ((ModernButton)addNode).IconName = "add";
             _nodeActionsMenu = new ContextMenuStrip();
             Theme.ContextMenu(_nodeActionsMenu);
             _nodeActionsMenu.Items.Add("Добавить несколько серверов", null, (s, e) => BulkNodes());
@@ -387,7 +387,10 @@ namespace RedOSPackageUpdater
             _btnPreview.Top = _btnRun.Top = _btnStop.Top = 27;
             _status.Top = 29;
             _btnPreview.Text = _shortCommandLabels ? "Проверить" : "Проверить изменения";
-            UpdateRunButtonLabel(CollectChecked().Count);
+            _btnStop.Text = _shortCommandLabels ? "Стоп" : "Остановить";
+            // Первый layout выполняется во время BuildUi ещё до создания TreeView.
+            // Состояние выбора уже хранится отдельно и доступно на этой стадии.
+            UpdateRunButtonLabel(_checkedHosts.Count);
 
             // Вторая строка не конкурирует с действиями и остаётся полезной на минимальном окне.
             _pkgBox.Width = Math.Max(180, top.ClientSize.Width - _pkgBox.Left - 12);

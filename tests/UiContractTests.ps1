@@ -123,7 +123,8 @@ $transparentIconPipeline = $chrome -match 'new Rectangle\(14,11,16,16\)' -and
     ([IO.File]::ReadAllText((Join-Path $project 'tools\Extract-ApprovedIcon.ps1'))) -match 'Apply-CleanRoundedTileMask'
 Assert-Ui $transparentIconPipeline 'icon pipeline removes board corners and uses an exact title-bar frame'
 $uniformPageHeaders = $shell -match 'const int headerHeight = 78' -and
-    $shell -match 'const int actionWidth = 146' -and $shell -match 'const int actionHeight = 40' -and
+    $shell -match 'const int minimumActionWidth = 146' -and $shell -match 'const int actionHeight = 40' -and
+    $shell -match 'TextRenderer\.MeasureText\(actionText' -and
     $shell -notmatch 'head\.Height = 72'
 Assert-Ui $uniformPageHeaders 'all pages use one header and action size'
 $searchClearsScrollbar = $main -match 'treeHeader = new Panel \{ Dock = DockStyle\.Top, Height = 74' -and
@@ -145,6 +146,9 @@ $clearTerminology = $main -notmatch 'Сервисы системы' -and $shell 
 Assert-Ui $clearTerminology 'ambiguous service and preflight actions use operator-facing names'
 $latestReportWorks = $shell -match 'OpenLatestReport\(\)' -and $main -match 'GetFiles\(pattern, SearchOption\.AllDirectories\)'
 Assert-Ui $latestReportWorks 'latest report action opens a real newest report file'
+$startupLayoutIsTreeIndependent = $main -match 'UpdateRunButtonLabel\(_checkedHosts\.Count\)' -and
+    $main -notmatch 'LayoutCommandBar[\s\S]{0,1800}CollectChecked\(\)\.Count'
+Assert-Ui $startupLayoutIsTreeIndependent 'startup command-bar layout does not access TreeView before construction'
 
 $buildInfo = [IO.File]::ReadAllText((Join-Path $project 'src\BuildInfo.cs'))
 $versionMatch = [regex]::Match($buildInfo, 'Version = "([0-9]+\.[0-9]+\.[0-9]+)"')

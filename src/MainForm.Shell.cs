@@ -163,7 +163,7 @@ namespace RedOSPackageUpdater
             info.Controls.Add(path); info.Controls.Add(title);
             var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 62, Padding = new Padding(0, 14, 0, 0), BackColor = Theme.Bg };
             AddCompactBtn(actions, "Открыть последний отчёт", 176, delegate { OpenLatestReport(); });
-            AddCompactBtn(actions, "Открыть журналы операций", 182, delegate { OpenPath(Store.LogsDir); });
+            AddCompactBtn(actions, "Открыть журналы операций", 202, delegate { OpenPath(Store.LogsDir); });
             var kinds = new TableLayoutPanel { Dock = DockStyle.Top, Height = 138, ColumnCount = 3, Padding = new Padding(0, 12, 0, 0), BackColor = Theme.Bg };
             kinds.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F)); kinds.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F)); kinds.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
             kinds.Controls.Add(InfoCard("Предпроверки", "Состав транзакции до внесения изменений", "CSV"), 0, 0);
@@ -305,12 +305,13 @@ namespace RedOSPackageUpdater
         private Panel BuildPageHeader(string title, string subtitle, string actionText, Action action, bool lockWhileRunning = false)
         {
             const int headerHeight = 78;
-            const int actionWidth = 146;
+            const int minimumActionWidth = 146;
             const int actionHeight = 40;
             var head = new Panel { Dock = DockStyle.Top, Height = headerHeight, BackColor = Theme.Surface };
             Theme.EdgeLine(head, DockStyle.Bottom);
             var titleLabel = new Label { Left = 18, Top = 12, Width = 500, Height = 28, Text = title, Font = Theme.UiFontPageTitle, ForeColor = Theme.Text };
             var subtitleLabel = new Label { Left = 19, Top = 43, Width = 650, Height = 20, Text = subtitle, ForeColor = Theme.Muted };
+            int actionWidth = Math.Max(minimumActionWidth, TextRenderer.MeasureText(actionText ?? "", Theme.UiFont).Width + 34);
             var actionButton = new ModernButton { Width = actionWidth, Height = actionHeight,
                 Left = 0, Top = (headerHeight - actionHeight) / 2, Anchor = AnchorStyles.Top | AnchorStyles.Right, Text = actionText };
             Theme.Secondary(actionButton); actionButton.Click += delegate { if (action != null) action(); };
