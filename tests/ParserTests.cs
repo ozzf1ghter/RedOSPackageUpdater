@@ -61,6 +61,17 @@ internal static class ParserTests
         Check(complete.Severity == "MEDIUM" && complete.Title == "Более свежие данные", "существующие данные не перезаписываются");
 
         Check(ShellText.InSingleQuotes("a'b") == "a'\"'\"'b", "экранирование bash без потери апострофа");
+        string packageList, packageError;
+        Check(OperationDomain.TryNormalizePackageList("kernel-lt nginx-1:1.26.0-2.el8 @server postgresql*", out packageList, out packageError) &&
+            packageList.Contains("kernel-lt") && packageError == null, "допустимые имена и NEVRA пакетов принимаются");
+        Check(!OperationDomain.TryNormalizePackageList("--setopt=pluginpath=/tmp evil/package", out packageList, out packageError) &&
+            packageError.Contains("Недопустимое"), "параметры DNF и пути нельзя передать через поле пакетов");
+        List<string> serviceMasks;
+        string serviceError;
+        Check(OperationDomain.TryNormalizeServiceMasks(new[] { "postgresql*", "patroni.service", "PATRONI.service" }, out serviceMasks, out serviceError) &&
+            serviceMasks.Count == 2, "маски systemd-служб очищаются и дедуплицируются");
+        Check(!OperationDomain.TryNormalizeServiceMasks(new[] { "--state=failed" }, out serviceMasks, out serviceError),
+            "параметры systemctl нельзя сохранить как маску службы");
         Check(WebRequests.IsTransient(new WebException("timeout", WebExceptionStatus.Timeout)), "повтор запроса после таймаута");
         Check(!WebRequests.IsTransient(new WebException("tls", WebExceptionStatus.TrustFailure)), "TLS-ошибка не маскируется повторами");
 
@@ -166,10 +177,11 @@ internal static class ParserTests
         Check(AppUpdater.BuildRawUrl("main", "update.json", "abc").EndsWith("/main/update.json?r=abc"), "URL манифеста обходит HTTP-кеш");
         Check(AppUpdater.BuildRawUrl(new string('a', 40), "RedOSPackageUpdater.exe", "def").Contains("/" + new string('a', 40) + "/RedOSPackageUpdater.exe?r=def"), "EXE скачивается из закреплённого коммита");
         Check(AppUpdater.BatchLiteral(@"C:\100%\app.exe") == @"C:\100%%\app.exe", "путь обновления безопасен для batch-переменных");
-        foreach (int width in new[] { 720, 766, 929, 959, 960, 1100 })
+        foreach (int width in new[] { 766, 850, 929, 959, 960, 1100, 1180 })
         {
             CommandBarLayout command = UiLayoutRules.CommandBar(width, 236);
-            Check(command.PreviewLeft >= 310 && command.RunLeft > command.PreviewLeft && command.StopLeft > command.RunLeft,
+            Check(command.PreviewLeft >= 372 && command.RunLeft >= command.PreviewLeft + command.PreviewWidth + 8 &&
+                  command.StopLeft >= command.RunLeft + command.RunWidth + 8,
                 "панель действий не перекрывает выбор сценария при ширине " + width);
         }
         foreach (int width in new[] { 500, 766, 900, 1200 })

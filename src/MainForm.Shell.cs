@@ -67,7 +67,7 @@ namespace RedOSPackageUpdater
         private Panel BuildServersPage(Panel serverTree)
         {
             var page = NewPage();
-            var head = BuildPageHeader("Серверы", "Инфраструктура, состояние и выбор целей", "Добавить узел", delegate { AddNode(); }, true);
+            var head = BuildPageHeader("Серверы", "Инфраструктура, состояние и выбор целей", "Добавить сервер", delegate { AddNode(); }, true);
             page.Controls.Add(head);
 
             var body = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 320, FixedPanel = FixedPanel.Panel1, SplitterWidth = 8, BackColor = Theme.Bg };
@@ -386,13 +386,20 @@ namespace RedOSPackageUpdater
                 _tips.SetToolTip(_btnToggleAll, allSelected ? "Снять все отметки" : "Отметить все серверы");
             }
             if (_shellStatus != null) _shellStatus.Text = _running ? "Выполняется операция" : "Готово · выбрано " + selected + " серверов";
-            if (_btnRun != null && !_running) _btnRun.Text = selected > 0 ? "Запустить на " + selected + " узлах" : "Запустить отмеченные";
+            UpdateRunButtonLabel(selected);
             if (!_running)
             {
                 if (_btnRun != null) _btnRun.Enabled = selected > 0;
                 if (_btnPreview != null) _btnPreview.Enabled = selected > 0;
                 if (_btnVulnerabilityScan != null) _btnVulnerabilityScan.Enabled = selected > 0;
             }
+        }
+
+        private void UpdateRunButtonLabel(int selected)
+        {
+            if (_btnRun == null || _running) return;
+            if (_shortCommandLabels) _btnRun.Text = selected > 0 ? "Запустить (" + selected + ")" : "Запустить";
+            else _btnRun.Text = selected > 0 ? "Запустить на " + selected + " серверах" : "Запустить операцию";
         }
 
         private void RefreshServerDetails()
@@ -438,7 +445,7 @@ namespace RedOSPackageUpdater
                 foreach (DirectoryInfo directory in new DirectoryInfo(Store.LogsDir).GetDirectories().OrderByDescending(d => d.LastWriteTime).Take(5))
                 {
                     string kind = directory.Name.StartsWith("vuln_", StringComparison.OrdinalIgnoreCase) ? "ФСТЭК" :
-                        directory.Name.StartsWith("preview_", StringComparison.OrdinalIgnoreCase) ? "Предпроверка" : "Операция";
+                        directory.Name.StartsWith("preview_", StringComparison.OrdinalIgnoreCase) ? "Проверка изменений" : "Операция";
                     var row = new ListViewItem(directory.Name) { Tag = directory.FullName };
                     row.SubItems.Add(kind); row.SubItems.Add(directory.LastWriteTime.ToString("dd.MM.yyyy HH:mm")); list.Items.Add(row);
                 }

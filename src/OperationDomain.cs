@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace RedOSPackageUpdater
 {
@@ -24,15 +25,49 @@ namespace RedOSPackageUpdater
             }
         }
 
-        public static string NormalizePackageList(string value)
+        private static readonly Regex SafePackageToken = new Regex(@"^@?[A-Za-z0-9_+.*?:~]+(?:-[A-Za-z0-9_+.*?:~]+)*$", RegexOptions.Compiled);
+
+        public static bool TryNormalizePackageList(string value, out string normalized, out string error)
         {
             var result = new List<string>();
             foreach (string token in (value ?? "").Replace("\r", " ").Replace("\n", " ").Split(' '))
             {
                 string item = token.Trim();
-                if (item.Length > 0) result.Add(item);
+                if (item.Length == 0) continue;
+                // Значение передаётся DNF как набор аргументов. Не разрешаем ключи командной строки,
+                // пути и shell-подобный мусор: оператор должен вводить только имя/NEVRA/маску пакета.
+                if (item.StartsWith("-", StringComparison.Ordinal) || !SafePackageToken.IsMatch(item))
+                {
+                    normalized = null;
+                    error = "Недопустимое имя пакета: «" + item + "». Используйте имя, NEVRA, маску '*' или группу с префиксом @; параметры DNF здесь запрещены.";
+                    return false;
+                }
+                result.Add(item);
             }
-            return result.Count == 0 ? null : string.Join(" ", result.ToArray());
+            normalized = result.Count == 0 ? null : string.Join(" ", result.ToArray());
+            error = null;
+            return true;
+        }
+
+        public static bool TryNormalizeServiceMasks(IEnumerable<string> values, out List<string> normalized, out string error)
+        {
+            normalized = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var safe = new Regex(@"^[A-Za-z0-9_.@*?-]+$", RegexOptions.Compiled);
+            foreach (string raw in values ?? new string[0])
+            {
+                string value = (raw ?? "").Trim();
+                if (value.Length == 0) continue;
+                if (value.StartsWith("-", StringComparison.Ordinal) || !safe.IsMatch(value))
+                {
+                    error = "Недопустимое имя или маска службы: «" + value + "». Используйте имя systemd unit и при необходимости символ '*'.";
+                    normalized = null;
+                    return false;
+                }
+                if (seen.Add(value)) normalized.Add(value);
+            }
+            error = null;
+            return true;
         }
 
         public static string NewLogDirectory(string root, string prefix, DateTime now)

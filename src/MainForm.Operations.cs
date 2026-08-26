@@ -149,7 +149,8 @@ namespace RedOSPackageUpdater
             string action = PkgAction();
             bool listOnly = action == "locklist";   // просмотр закреплённых версий - только чтение
             if (listOnly) dryRun = true;             // ничего не меняем, оба режима = показать список
-            string packages = PkgListFromBox();
+            string packages;
+            if (!TryGetPackageList(out packages)) return;
             if (packages == null)
             {
                 if (!listOnly) { AppDialog.Info(this, "Не указаны пакеты", "Введите пакеты в поле сценария — через пробел или по одному на строку."); return; }
@@ -177,7 +178,7 @@ namespace RedOSPackageUpdater
             Directory.CreateDirectory(logDir);
             string script = Profiles.Read(Profiles.PkgOp);
 
-            string title = listOnly ? actRu : (dryRun ? "Предпроверка: " + actRu.ToLower() : actRu);
+            string title = listOnly ? actRu : (dryRun ? "Проверка изменений: " + actRu.ToLower() : actRu);
             ResetSummary(targets, title + ". Клик по строке — лог узла.");
             var orch = NewOrchestrator(true);
             WireHostCallbacks(orch);
@@ -344,7 +345,7 @@ namespace RedOSPackageUpdater
             if (tr.Length >= 8 && (tr.Trim('=').Length == 0 || tr.Trim('-').Length == 0)) return false;
             if (line.StartsWith("===") || line.StartsWith("-----")) return true;
             string[] keys = { "RESULT:", "REBOOT_REQUIRED:", "PRESTOP_RESULT:", "RUNNING_KERNEL:", "EXPECTED_KERNEL:", "VULN|", "VULN_SUMMARY|", "TRIVY_LOG|", "TRIVY_ERR|",
-                "Подобрана", "кеш", "Ошибка", "ОШИБКА", "ИСКЛЮЧЕНИЕ", "ВНИМАНИЕ", "Останавли", "reboot", "Reboot", "вернул", "down",
+                "Подобрана", "кеш", "Ошибка", "ОШИБКА", "ИСКЛЮЧЕНИЕ", "ВНИМАНИЕ", "БЕЗОПАСНОСТЬ", "Останавли", "reboot", "Reboot", "вернул", "down",
                 "Отсутствует", "не подошла", "нет связи", "агрузк", "is-system", "готовности" };
             foreach (var k in keys) if (line.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
@@ -381,7 +382,7 @@ namespace RedOSPackageUpdater
             switch (phase)
             {
                 case "update": txt = "обновление..."; bg = Theme.AccentTint; break;
-                case "preview": txt = "предпроверка..."; bg = Theme.AccentTint; break;
+                case "preview": txt = "проверка изменений..."; bg = Theme.AccentTint; break;
                 case "prestop": txt = "стоп служб..."; bg = Theme.IsDark ? Color.FromArgb(52, 42, 78) : Color.FromArgb(239, 234, 255); break;
                 case "reboot": txt = "перезагрузка..."; bg = Theme.IsDark ? Color.FromArgb(74, 55, 27) : Color.FromArgb(255, 238, 202); break;
                 case "postcheck": txt = "проверка..."; bg = Theme.IsDark ? Color.FromArgb(28, 61, 75) : Color.FromArgb(226, 245, 252); break;
@@ -412,7 +413,7 @@ namespace RedOSPackageUpdater
             try
             {
                 var sb = new StringBuilder();
-                sb.AppendLine("Система;Узел;IP или имя;Статус;Обновление;Перезагрузка;До обновления;После обновления;Ядро;Примечание");
+                sb.AppendLine("Группа;Сервер;IP или имя;Статус;Обновление;Перезагрузка;До обновления;После обновления;Ядро;Примечание");
                 foreach (var r in res)
                     sb.AppendLine(string.Join(";", new[] { Csv(r.System), Csv(r.Name), Csv(r.Host), Csv(StatusText(r.Status)),
                         Csv(r.UpdateResult), Csv(r.RebootAction), Csv(r.PreStop), Csv(r.PostCheck), Csv(r.RunningKernel), Csv(r.Note) }));

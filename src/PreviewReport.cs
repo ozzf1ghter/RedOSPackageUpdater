@@ -12,12 +12,12 @@ namespace RedOSPackageUpdater
         public static string Build(List<HostPreview> res, string dir)
         {
             var sb = new StringBuilder();
-            sb.Append("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Предпроверка обновлений</title><style>");
+            sb.Append("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Проверка изменений</title><style>");
             sb.Append(":root{--bg:#f4f6f9;--surface:#fff;--text:#1b2433;--muted:#657082;--line:#dadee7;--accent:#265bcf;--tint:#ebf2ff;--warn:#b57d0b;--danger:#c93a3a}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px 'Segoe UI',Arial,sans-serif}");
             sb.Append("header{background:var(--surface);border-top:4px solid var(--accent);padding:24px clamp(18px,4vw,48px);border-bottom:1px solid var(--line)}h1{font-size:24px;margin:0 0 6px;letter-spacing:-.3px}.wrap{max-width:1800px;margin:auto;padding:22px clamp(14px,4vw,48px)}h2{font-size:18px;margin:28px 0 10px}h3{font-size:14px;margin:18px 0 6px}");
             sb.Append(".cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}.card,table{background:var(--surface);border:1px solid var(--line);box-shadow:0 2px 8px rgba(27,36,51,.04);border-radius:9px}.card{padding:15px 18px}.num{font-size:25px;font-weight:650}table{border-collapse:separate;border-spacing:0;width:100%;margin:7px 0 16px;font-size:12px;overflow:hidden}th,td{padding:9px 10px;text-align:left;border-bottom:1px solid #e8ebf0}th{background:#f7f8fa;color:var(--muted);font-weight:600}tr:last-child td{border-bottom:0}tr:hover{background:#f2f6ff}");
             sb.Append("tr.sec{background:#fff8e8}.excl{color:#8c94a1;text-decoration:line-through}.err{color:var(--danger)}.muted{color:var(--muted)}.badge,.dep,.kern,.skip{display:inline-block;border-radius:5px;padding:2px 7px;font-size:11px}.badge{background:#feecec;color:var(--danger)}.dep{background:#eef0f4;color:#536071}.kern{background:var(--tint);color:var(--accent)}.skip{background:#eef0f4;color:#737d8c}@media(max-width:760px){.wrap{padding:14px}table{display:block;overflow-x:auto;white-space:nowrap}}</style></head><body>");
-            sb.Append("<header><h1>Предпроверка обновлений</h1><div class=muted>Что реально изменит транзакция выбранного профиля</div></header><main class=wrap>");
+            sb.Append("<header><h1>Проверка изменений</h1><div class=muted>Что реально изменит транзакция выбранного сценария</div></header><main class=wrap>");
 
             int totalPkgs = 0, totalSec = 0, totalDep = 0;
             foreach (var h in res) { totalPkgs += h.Total; totalSec += h.Sec; totalDep += h.Dep; }
@@ -62,7 +62,7 @@ namespace RedOSPackageUpdater
         // Настоящий .xlsx (OOXML) - плоская таблица. Именно xlsx, а не SpreadsheetML c расширением .xls,
         // иначе Excel ругается "формат не соответствует расширению".
         private static readonly int[] ColW = { 20, 20, 14, 26, 30, 16, 16, 15, 30 };
-        private static readonly string[] Headers = { "Система", "Узел", "Host", "ОС узла", "Пакет", "Текущая", "Новая", "Репозиторий", "Категория" };
+        private static readonly string[] Headers = { "Группа", "Сервер", "Host", "ОС сервера", "Пакет", "Текущая", "Новая", "Репозиторий", "Категория" };
 
         public static string BuildXlsx(List<HostPreview> res, string dir)
         {
@@ -112,7 +112,7 @@ namespace RedOSPackageUpdater
         {
             return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
-                + "<sheets><sheet name=\"Предпроверка\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+                + "<sheets><sheet name=\"Проверка изменений\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
         }
 
         private static string WorkbookRelsXml()

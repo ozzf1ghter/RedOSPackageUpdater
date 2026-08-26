@@ -51,7 +51,7 @@ namespace RedOSPackageUpdater
             _suppressCheck = false;
             if (_treeEmpty != null)
             {
-                _treeEmpty.Text = query.Length > 0 ? "Ничего не найдено\r\n\r\nИзмените поисковый запрос" : "Серверов пока нет\r\n\r\nДобавьте систему и первый узел";
+                _treeEmpty.Text = query.Length > 0 ? "Ничего не найдено\r\n\r\nИзмените поисковый запрос" : "Серверов пока нет\r\n\r\nДобавьте группу серверов, затем первый сервер";
                 _treeEmpty.Visible = _tree.Nodes.Count == 0;
                 if (_treeEmpty.Visible) _treeEmpty.BringToFront();
             }
@@ -101,7 +101,7 @@ namespace RedOSPackageUpdater
             if (node.Tag is Node)
             {
                 m.Items.Add("Проверить изменения на сервере", null, (s, e) => RunPreviewTargets(CollectSingle(node)));
-                m.Items.Add("Запустить этот узел", null, (s, e) => RunTargets(CollectSingle(node)));
+                m.Items.Add("Запустить на этом сервере", null, (s, e) => RunTargets(CollectSingle(node)));
                 m.Items.Add("Изменить", null, (s, e) => EditSelected());
                 m.Items.Add("Удалить", null, (s, e) => DeleteSelected());
             }
@@ -109,11 +109,11 @@ namespace RedOSPackageUpdater
             {
                 m.Items.Add("Проверить изменения в группе", null, (s, e) => RunPreviewTargets(CollectSystem(node)));
                 m.Items.Add("Запустить на всей группе", null, (s, e) => RunTargets(CollectSystem(node)));
-                m.Items.Add("Добавить узел", null, (s, e) => { _tree.SelectedNode = node; AddNode(); });
-                m.Items.Add("Массовый ввод узлов", null, (s, e) => { _tree.SelectedNode = node; BulkNodes(); });
+                m.Items.Add("Добавить сервер", null, (s, e) => { _tree.SelectedNode = node; AddNode(); });
+                m.Items.Add("Добавить несколько серверов", null, (s, e) => { _tree.SelectedNode = node; BulkNodes(); });
                 m.Items.Add("Службы перед перезагрузкой", null, (s, e) => { _tree.SelectedNode = node; EditServices(); });
                 m.Items.Add("Переименовать", null, (s, e) => RenameSystem(node));
-                m.Items.Add("Удалить систему", null, (s, e) => DeleteSelected());
+                m.Items.Add("Удалить группу", null, (s, e) => DeleteSelected());
             }
             m.Show(_tree, _tree.PointToClient(Cursor.Position));
         }
@@ -149,7 +149,11 @@ namespace RedOSPackageUpdater
             var sys = CurrentSystem();
             if (sys == null) { AppDialog.Info(this, "Не выбрана группа", "Сначала выберите группу серверов слева."); return; }
             using (var f = new NodeForm(null))
-                if (f.ShowDialog(this) == DialogResult.OK) { sys.Nodes.Add(f.Result); Store.SaveConfig(_cfg); RebuildTree(); }
+                if (f.ShowDialog(this) == DialogResult.OK)
+                {
+                    if (!EnsureUniqueHost(f.Result, null)) return;
+                    sys.Nodes.Add(f.Result); Store.SaveConfig(_cfg); RebuildTree();
+                }
         }
         private void BulkNodes()
         {
@@ -159,9 +163,22 @@ namespace RedOSPackageUpdater
             using (var f = new BulkNodesForm())
                 if (f.ShowDialog(this) == DialogResult.OK && f.Result != null && f.Result.Count > 0)
                 {
-                    sys.Nodes.AddRange(f.Result);
+                    var accepted = new List<Node>();
+                    int duplicates = 0;
+                    foreach (Node candidate in f.Result)
+                    {
+                        if (FindNodeByHost(candidate.Host, null) != null || accepted.Any(n => string.Equals(n.Host, candidate.Host, StringComparison.OrdinalIgnoreCase))) duplicates++;
+                        else accepted.Add(candidate);
+                    }
+                    if (accepted.Count == 0)
+                    {
+                        AppDialog.Info(this, "Серверы не добавлены", "Все введённые адреса уже существуют в конфигурации.");
+                        return;
+                    }
+                    sys.Nodes.AddRange(accepted);
                     Store.SaveConfig(_cfg); RebuildTree();
-                    SetStatus("Добавлено узлов: " + f.Result.Count);
+                    SetStatus("Добавлено серверов: " + accepted.Count + (duplicates > 0 ? "; повторов пропущено: " + duplicates : ""));
+                    if (duplicates > 0) AppDialog.Info(this, "Повторяющиеся адреса пропущены", "Добавлено серверов: " + accepted.Count + ". Уже существующих или повторных адресов: " + duplicates + ".");
                 }
         }
         private void EditSelected()
@@ -174,12 +191,31 @@ namespace RedOSPackageUpdater
                 using (var f = new NodeForm(node))
                     if (f.ShowDialog(this) == DialogResult.OK)
                     {
+                        if (!EnsureUniqueHost(f.Result, node)) return;
                         node.Name = f.Result.Name; node.Host = f.Result.Host; node.Port = f.Result.Port;
                         node.Role = f.Result.Role; node.Enabled = f.Result.Enabled;
                         Store.SaveConfig(_cfg); RebuildTree();
                     }
             }
             else if (n.Tag is SubSystem) RenameSystem(n);
+        }
+
+        private Node FindNodeByHost(string host, Node ignore)
+        {
+            string value = (host ?? "").Trim();
+            foreach (SubSystem system in _cfg.Systems)
+                foreach (Node node in system.Nodes)
+                    if (!ReferenceEquals(node, ignore) && string.Equals((node.Host ?? "").Trim(), value, StringComparison.OrdinalIgnoreCase)) return node;
+            return null;
+        }
+
+        private bool EnsureUniqueHost(Node candidate, Node ignore)
+        {
+            Node duplicate = FindNodeByHost(candidate == null ? null : candidate.Host, ignore);
+            if (duplicate == null) return true;
+            AppDialog.Info(this, "Адрес уже используется",
+                "Сервер с адресом «" + candidate.Host + "» уже есть в конфигурации: " + HostIdentity.Label(duplicate.Name, duplicate.Host) + ".\r\n\r\nОдин адрес нельзя запускать параллельно из нескольких записей.");
+            return false;
         }
         private void DeleteSelected()
         {
@@ -188,7 +224,7 @@ namespace RedOSPackageUpdater
             if (n.Tag is Node)
             {
                 var sys = CurrentSystem();
-                if (sys != null && AppDialog.Confirm(this, "Удаление узла", "Удалить узел " + ((Node)n.Tag).Host + "?", "Удалить"))
+                if (sys != null && AppDialog.Confirm(this, "Удаление сервера", "Удалить запись сервера " + HostIdentity.Label(((Node)n.Tag).Name, ((Node)n.Tag).Host) + " из программы? Данные на сервере затронуты не будут.", "Удалить запись"))
                 { sys.Nodes.Remove((Node)n.Tag); Store.SaveConfig(_cfg); RebuildTree(); }
             }
             else if (n.Tag is SubSystem)
@@ -207,9 +243,14 @@ namespace RedOSPackageUpdater
                 "Эти службы будут остановлены перед перезагрузкой и проверены после запуска.\r\n\r\nУкажите имена или маски systemd — по одной на строку, например postgresql* или patroni:",
                 cur, true, new Size(520, 350));
             if (txt == null) return;
-            sys.Services = new List<string>();
-            foreach (var line in txt.Replace("\r", "").Split('\n'))
-            { var t = line.Trim(); if (t.Length > 0) sys.Services.Add(t); }
+            List<string> services;
+            string validationError;
+            if (!OperationDomain.TryNormalizeServiceMasks(txt.Replace("\r", "").Split('\n'), out services, out validationError))
+            {
+                AppDialog.Info(this, "Проверьте список служб", validationError);
+                return;
+            }
+            sys.Services = services;
             Store.SaveConfig(_cfg);
             SetStatus("Список служб перед перезагрузкой обновлён");
         }
@@ -365,7 +406,7 @@ namespace RedOSPackageUpdater
             // Отключённый узел (серый в дереве) не должен запускаться в обход - раньше правый клик
             // "Запустить этот узел" игнорировал n.Enabled, в отличие от CollectChecked/CollectSystem,
             // которые его учитывают. Молчаливое расхождение поведения между тремя точками входа.
-            if (!n.Enabled) { AppDialog.Info(this, "Узел отключён", "Сначала включите узел в его свойствах."); return list; }
+            if (!n.Enabled) { AppDialog.Info(this, "Сервер отключён", "Сначала включите сервер в его свойствах."); return list; }
             var sys = (node.Parent != null) ? node.Parent.Tag as SubSystem : null;
             list.Add(new RunTarget(sys, n));
             return list;
@@ -419,6 +460,26 @@ namespace RedOSPackageUpdater
                 // пункт меню молча "не срабатывал", пользователь не понимал, что произошло.
                 AppDialog.Info(this, "Нет доступных серверов", "Для запуска нет включённых серверов.");
                 return false;
+            }
+            var invalid = targets.Where(target => target == null || target.Node == null || string.IsNullOrWhiteSpace(target.Node.Host) ||
+                target.Node.Port < 1 || target.Node.Port > 65535).ToList();
+            if (invalid.Count > 0)
+            {
+                AppDialog.Error(this, "Некорректные серверы",
+                    "Операция не запущена: у " + invalid.Count + " выбранных записей отсутствует адрес или указан недопустимый SSH-порт. Исправьте записи на странице «Серверы».");
+                return false;
+            }
+            foreach (SubSystem system in targets.Where(target => target.System != null).Select(target => target.System).Distinct())
+            {
+                List<string> normalizedServices;
+                string serviceError;
+                if (!OperationDomain.TryNormalizeServiceMasks(system.Services, out normalizedServices, out serviceError))
+                {
+                    AppDialog.Error(this, "Некорректные службы перед перезагрузкой",
+                        "Операция не запущена. В группе «" + system.Name + "» сохранена небезопасная или некорректная маска.\r\n\r\n" + serviceError +
+                        "\r\n\r\nИсправьте список на странице «Серверы».");
+                    return false;
+                }
             }
             return true;
         }
@@ -475,95 +536,6 @@ namespace RedOSPackageUpdater
             _selectedHost = null;   // живой лог показывает все узлы, пока не кликнут строку
             // подсказку ставим последней: добавление строк триггерит SelectionChanged и перетирает её
             if (_logHint != null) _logHint.Text = logHint;
-        }
-
-        // filteredLog=true - в живой лог идут только важные строки; false - весь вывод (для reposync).
-        private SshOrchestrator NewOrchestrator(bool filteredLog)
-        {
-            var orch = new SshOrchestrator(_cfg.Credentials, _cache);
-            orch.OnUnknownHostKey = ConfirmUnknownHostKey;
-            if (filteredLog) orch.OnLog = (host, line) => { if (Important(line)) BufferLog(host, line); };
-            else orch.OnLog = (host, line) => BufferLog(host, line);
-            return orch;
-        }
-
-        private bool ConfirmUnknownHostKey(string host, int port, string fingerprint)
-        {
-            if (_trustUnknownHostKeysForOperation) return true;
-            bool accepted = false;
-            Action ask = () =>
-            {
-                // Пока этот запрос ожидал UI-поток, другой параллельный узел уже мог получить общее разрешение.
-                if (_trustUnknownHostKeysForOperation) { accepted = true; return; }
-                string text = "SSH-ключ этого сервера ранее не был известен.\n\n" +
-                    "Сервер: " + host + "\n" +
-                    "Порт: " + port + "\n" +
-                    "SHA-256: " + fingerprint + "\n\n" +
-                    "Сверьте отпечаток с доверенным источником.";
-                using (var dlg = new Form())
-                {
-                    dlg.Text = "Первое подключение к серверу";
-                    dlg.Width = 590; dlg.Height = 300; dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.Font = Theme.UiFont; dlg.BackColor = Theme.Bg; dlg.ForeColor = Theme.Text;
-                    dlg.FormBorderStyle = FormBorderStyle.FixedDialog; dlg.MaximizeBox = false; dlg.MinimizeBox = false;
-                    var label = new Label { Left = 18, Top = 18, Width = 540, Height = 145, Text = text };
-                    var all = new ModernCheckBox { Left = 18, Top = 170, Width = 540, Height = 38, BackColor = Theme.Surface,
-                        Text = "Доверять всем остальным новым SSH-ключам только в этой операции" };
-                    var yes = new ModernButton { Text = "Доверять и сохранить", Left = 272, Top = 220,
-                        Width = 170, Height = 30, DialogResult = DialogResult.Yes };
-                    var no = new ModernButton { Text = "Отмена", Left = 450, Top = 220,
-                        Width = 108, Height = 30, DialogResult = DialogResult.No };
-                    Theme.Check(all); Theme.Primary(yes); Theme.Secondary(no);
-                    dlg.Controls.Add(label); dlg.Controls.Add(all); dlg.Controls.Add(yes); dlg.Controls.Add(no);
-                    dlg.AcceptButton = yes; dlg.CancelButton = no;
-                    accepted = dlg.ShowDialog(this) == DialogResult.Yes;
-                    if (accepted && all.Checked) _trustUnknownHostKeysForOperation = true;
-                }
-            };
-            if (InvokeRequired) Invoke(ask); else ask();
-            return accepted;
-        }
-
-        private void ManageHostKeys()
-        {
-            var known = Store.LoadKnownHosts();
-            using (var dlg = new Form())
-            {
-                dlg.Text = "Сохранённые SSH-ключи";
-                dlg.Width = 760; dlg.Height = 440; dlg.StartPosition = FormStartPosition.CenterParent;
-                dlg.Font = Theme.UiFont; dlg.BackColor = Theme.Bg; dlg.ForeColor = Theme.Text;
-
-                var list = new ModernListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
-                    MultiSelect = true, HideSelection = false, BackColor = Theme.Surface, ForeColor = Theme.Text, BorderStyle = BorderStyle.None };
-                list.Columns.Add("Сервер", 220);
-                list.Columns.Add("SHA-256 fingerprint", 490);
-                foreach (var kv in known)
-                {
-                    var item = new ListViewItem(kv.Key);
-                    item.SubItems.Add(kv.Value ?? "");
-                    list.Items.Add(item);
-                }
-
-                var bottom = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(8) };
-                var remove = new ModernButton { Text = "Удалить выбранные", Width = 160, Dock = DockStyle.Left };
-                var close = new ModernButton { Text = "Закрыть", Width = 100, Dock = DockStyle.Right, DialogResult = DialogResult.OK };
-                remove.Click += (s, e) =>
-                {
-                    if (list.SelectedItems.Count == 0) return;
-                    if (!AppDialog.Confirm(dlg, "Удаление SSH-ключей",
-                        "После удаления при следующем подключении потребуется подтвердить новый ключ. Продолжить?",
-                        "Удалить")) return;
-                    var selected = new List<ListViewItem>();
-                    foreach (ListViewItem item in list.SelectedItems) selected.Add(item);
-                    foreach (var item in selected) { known.Remove(item.Text); list.Items.Remove(item); }
-                    Store.SaveKnownHosts(known);
-                };
-                bottom.Controls.Add(remove); bottom.Controls.Add(close);
-                dlg.Controls.Add(list); dlg.Controls.Add(bottom);
-                Theme.Dialog(dlg);
-                dlg.AcceptButton = close;
-                dlg.ShowDialog(this);
-            }
         }
 
     }

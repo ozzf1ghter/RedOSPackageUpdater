@@ -16,7 +16,7 @@ namespace RedOSPackageUpdater
 
         public NodeForm(Node existing)
         {
-            Text = existing == null ? "Новый узел" : "Изменить узел";
+            Text = existing == null ? "Новый сервер" : "Изменить сервер";
             FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ClientSize = new Size(360, 210);
 
@@ -58,16 +58,24 @@ namespace RedOSPackageUpdater
 
         public BulkNodesForm()
         {
-            Text = "Массовый ввод узлов";
+            Text = "Массовое добавление серверов";
             StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(460, 380);
-            var lbl = new Label { Text = "Вставьте строки. Форматы: 'имя IP', 'имя<tab>IP' или просто 'IP' (по строке на узел).", Left = 10, Top = 8, Width = 440, Height = 34 };
+            var lbl = new Label { Text = "Вставьте серверы: «имя IP», «имя<tab>IP» или только IP — по одному на строку.", Left = 10, Top = 8, Width = 440, Height = 34 };
             // Theme.Mono - общий на всё приложение шрифт Consolas 9, а не новый Font на каждое открытие
             // диалога: Control.Dispose() не освобождает шрифт, назначенный через свойство Font (WinForms
             // не считает себя его владельцем) - при повторных открытиях это была утечка GDI-хендлов.
             _tb = new TextBox { Left = 10, Top = 44, Width = 440, Height = 280, Multiline = true, ScrollBars = ScrollBars.Both, AcceptsReturn = true, WordWrap = false, Font = Theme.Mono };
             var ok = new ModernButton { Text = "Добавить", Width = 100, Height = 30, Top = 332, Left = 250, DialogResult = DialogResult.OK };
             var cancel = new ModernButton { Text = "Отмена", Width = 100, Height = 30, Top = 332, Left = 360, DialogResult = DialogResult.Cancel };
-            ok.Click += (s, e) => { Result = Parse(_tb.Text); };
+            ok.Click += (s, e) =>
+            {
+                Result = Parse(_tb.Text);
+                if (Result.Count == 0)
+                {
+                    AppDialog.Info(this, "Серверы не распознаны", "Введите хотя бы одну строку с адресом сервера.");
+                    DialogResult = DialogResult.None;
+                }
+            };
             Controls.AddRange(new Control[] { lbl, _tb, ok, cancel });
             Theme.Dialog(this);
             AcceptButton = ok; CancelButton = cancel;

@@ -6,6 +6,11 @@ using Renci.SshNet.Common;
 
 namespace RedOSPackageUpdater
 {
+    internal sealed class SshHostKeyMismatchException : InvalidOperationException
+    {
+        public SshHostKeyMismatchException(string message) : base(message) { }
+    }
+
     public partial class SshOrchestrator
     {
         // ---- Подбор учётки: кеш -> пул, с кешированием результата ----
@@ -56,6 +61,13 @@ namespace RedOSPackageUpdater
                     }
                     else log("Учётка (" + cand.User + ") не подошла");
                     if (opt.Settings.AuthRetryDelayMs > 0) ct.WaitHandle.WaitOne(opt.Settings.AuthRetryDelayMs);
+                }
+                catch (SshHostKeyMismatchException ex)
+                {
+                    // Это не сетевая ошибка: продолжать перебор паролей бессмысленно и опасно.
+                    res.Note = "SSH-ключ сервера не совпадает с сохранённым";
+                    log("БЕЗОПАСНОСТЬ: " + ex.Message);
+                    return null;
                 }
                 catch (Exception ex)
                 {
@@ -123,11 +135,11 @@ namespace RedOSPackageUpdater
                 // клиент, иначе висит сокет.
                 try { client.Dispose(); } catch { }
                 if (mismatch)
-                    throw new InvalidOperationException(
+                    throw new SshHostKeyMismatchException(
                         "Host-ключ узла " + node.Host + " не совпадает с ранее сохранённым - "
                       + "возможна подмена сервера (MITM) либо сервер был переустановлен. "
-                      + "Если переустановка ожидаема, удалите запись для этого узла в known_hosts.json "
-                      + "в папке данных приложения и подключитесь заново.");
+                      + "Если переустановка ожидаема, откройте «Дополнительно → SSH-ключи», удалите "
+                      + "запись этого сервера и при следующем подключении сверьте новый отпечаток.");
                 throw;
             }
         }

@@ -62,6 +62,7 @@ namespace RedOSPackageUpdater
         private volatile string _selectedHost;
         private Label _logHint;
         private bool _lastLineProgress;   // последняя строка лога - прогресс reposync (следующую пишем на её место)
+        private bool _shortCommandLabels;
         private string _lastReportDir;    // папка последнего отчёта предпроверки
 
         public MainForm()
@@ -151,9 +152,9 @@ namespace RedOSPackageUpdater
             _tips = new ToolTip { AutoPopDelay = 20000, InitialDelay = 400, ReshowDelay = 100 };
             _tips.SetToolTip(_noReboot,
                 "Обновления ставятся как обычно, но если после них нужна перезагрузка - она не выполняется.\n" +
-                "Узел останется в статусе \"нужен reboot\" (Warn) с новым ядром, но со старым запущенным.\n" +
+                "Сервер останется в статусе «требуется перезагрузка» (WARN): новое ядро установлено, но ещё не загружено.\n" +
                 "Режим для предварительной установки вне окна обслуживания - перезагрузить все узлы можно\n" +
-                "позже отдельным запуском (профиль \"Обновить пакеты\" + reboot, либо вручную).");
+                "позже вручную или отдельной операцией в согласованное окно обслуживания.");
             // Поле пакетов (видно только в режимах "пакеты"), на второй строке вместо строки исключений.
             _pkgLabel = new Label { Left = 12, Top = 66, Width = 170, Height = 20, Text = "Пакеты:", Visible = false, ForeColor = Theme.Muted, Font = Theme.UiFontSmall, TextAlign = ContentAlignment.MiddleLeft };
             top.Controls.Add(_pkgLabel);
@@ -220,10 +221,10 @@ namespace RedOSPackageUpdater
             var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 7, 0, 0), BackColor = Theme.SidebarBg };
             Theme.EdgeLine(leftButtons, DockStyle.Top);
             var addSystem = AddCompactBtn(leftButtons, "Группа", 92, () => AddSystem()); ((ModernButton)addSystem).IconName = "add";
-            var addNode = AddCompactBtn(leftButtons, "Узел", 78, () => AddNode()); ((ModernButton)addNode).IconName = "add";
+            var addNode = AddCompactBtn(leftButtons, "Сервер", 82, () => AddNode()); ((ModernButton)addNode).IconName = "add";
             _nodeActionsMenu = new ContextMenuStrip();
             Theme.ContextMenu(_nodeActionsMenu);
-            _nodeActionsMenu.Items.Add("Массовый ввод узлов", null, (s, e) => BulkNodes());
+            _nodeActionsMenu.Items.Add("Добавить несколько серверов", null, (s, e) => BulkNodes());
             _nodeActionsMenu.Items.Add(new ToolStripSeparator());
             _nodeActionsMenu.Items.Add("Изменить", null, (s, e) => EditSelected());
             _nodeActionsMenu.Items.Add("Службы перед перезагрузкой", null, (s, e) => EditServices());
@@ -267,7 +268,7 @@ namespace RedOSPackageUpdater
             _summarySearch.TextChanged += delegate { FilterSummaryRows(); };
             _tips.SetToolTip(_summarySearch, "Поиск по всем колонкам результатов · Ctrl+F · Esc для очистки");
             gridHeader.Controls.Add(_summarySearch); _summarySearch.BringToFront();
-            AddCol(Col.System, "Система", 128); AddCol(Col.Name, "Узел", 150); AddCol(Col.Host, "IP / имя", 112);
+            AddCol(Col.System, "Группа", 128); AddCol(Col.Name, "Сервер", 150); AddCol(Col.Host, "IP / имя", 112);
             AddCol(Col.St, "Статус", 92); AddCol(Col.Upd, "Результат", 110); AddCol(Col.Reb, "Перезагрузка", 104);
             AddCol(Col.Pre, "До обновления", 108); AddCol(Col.Post, "После обновления", 118); AddCol(Col.Ker, "Ядро", 150);
             AddCol(Col.Os, "ОС узла", 170);   // из /etc/os-release узла (маркер OS_INFO) - парк может быть смешанным
@@ -343,9 +344,12 @@ namespace RedOSPackageUpdater
         }
 
         // Список пакетов из поля (через пробел/строки), пусто -> null.
-        private string PkgListFromBox()
+        private bool TryGetPackageList(out string packages)
         {
-            return OperationDomain.NormalizePackageList(_pkgBox.Text);
+            string error;
+            if (OperationDomain.TryNormalizePackageList(_pkgBox.Text, out packages, out error)) return true;
+            AppDialog.Info(this, "Проверьте список пакетов", error);
+            return false;
         }
 
         private Button AddBtn(Control parent, string text, Action act) { return AddBtn(parent, text, act, null); }
@@ -376,11 +380,14 @@ namespace RedOSPackageUpdater
         {
             if (top == null || _btnPreview == null) return;
             CommandBarLayout layout = UiLayoutRules.CommandBar(top.ClientSize.Width, _status.Width);
+            _shortCommandLabels = layout.ShortLabels;
             _btnPreview.Width = layout.PreviewWidth; _btnRun.Width = layout.RunWidth; _btnStop.Width = layout.StopWidth;
             _btnPreview.Left = layout.PreviewLeft; _btnRun.Left = layout.RunLeft; _btnStop.Left = layout.StopLeft;
             _status.Left = layout.StatusLeft; _status.Visible = !layout.Compact;
             _btnPreview.Top = _btnRun.Top = _btnStop.Top = 27;
             _status.Top = 29;
+            _btnPreview.Text = _shortCommandLabels ? "Проверить" : "Проверить изменения";
+            UpdateRunButtonLabel(CollectChecked().Count);
 
             // Вторая строка не конкурирует с действиями и остаётся полезной на минимальном окне.
             _pkgBox.Width = Math.Max(180, top.ClientSize.Width - _pkgBox.Left - 12);
@@ -457,129 +464,6 @@ namespace RedOSPackageUpdater
             public const string Os = "os";
             public const string Note = "note";
         }
-
-
-        private void WireHostCallbacks(SshOrchestrator orch)
-        {
-            orch.OnHostStart = r => Ui(() => UpdateRow(r, true));
-            orch.OnHostDone = r => Ui(() => UpdateRow(r, false));
-            orch.OnHostPhase = (host, phase) => Ui(() => SetRowPhase(host, phase));
-        }
-
-        // Запустить фоновую операцию: флаги/UI/статус + перехват ошибок + сброс по завершении.
-        private void StartOperation(string status, Action<CancellationToken> body)
-        {
-            if (_cts != null) throw new InvalidOperationException("Предыдущая операция ещё не завершена");
-            var source = new CancellationTokenSource();
-            _cts = source;
-            _trustUnknownHostKeysForOperation = false;
-            _running = true; SetRunningUi(true);
-            SetStatus(status);
-            var token = source.Token;
-            Task.Factory.StartNew(() =>
-            {
-                try { body(token); }
-                catch (OperationCanceledException) { Ui(() => { AppendLog("Операция отменена пользователем"); SetStatus("Остановлено"); }); }
-                catch (Exception ex) { Ui(() => { AppendLog("ОБЩАЯ ОШИБКА: " + ex); SetStatus("Операция завершилась ошибкой"); }); }
-                finally
-                {
-                    Ui(() =>
-                    {
-                        _running = false;
-                        SetRunningUi(false);
-                        if (ReferenceEquals(_cts, source)) _cts = null;
-                        source.Dispose();
-                        if (_closeAfterOperation)
-                        {
-                            _closeAfterOperation = false;
-                            Close();
-                        }
-                    });
-                }
-            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-        }
-
-        // ---------- Боевой прогон ----------
-        private void RunTargets(List<RunTarget> targets)
-        {
-            if (IsPkgMode()) { RunPkgOpTargets(targets, false); return; }   // режим "пакеты"
-            if (!Preflight(targets)) return;
-            targets = DedupeByHost(targets);
-
-            var opt = new RunOptions
-            {
-                Settings = _cfg.Settings,
-                NoReboot = _noReboot.Checked,
-                UpdateScript = Profiles.Read(SelectedProfileResource()),
-                PostScript = Profiles.Read(Profiles.PostCheck),
-                PreStopScript = Profiles.Read(Profiles.PreStop),
-                RunLogDir = NewLogDir("run_"),
-                ExcludeMasks = ExcludeMasks()
-            };
-
-            string exclInfo = string.IsNullOrEmpty(opt.ExcludeMasks) ? "(ничего)" : opt.ExcludeMasks;
-            if (!AppDialog.Confirm(this, "Подтверждение операции", "Запустить на " + targets.Count + " узлах?\nПрофиль: " + _profile.Text +
-                "\nИсключено из обновления: " + exclInfo +
-                (_noReboot.Checked ? "\nБез перезагрузки" : "\nС перезагрузкой при необходимости"), "Запустить")) return;
-
-            Directory.CreateDirectory(opt.RunLogDir);   // создаём только после подтверждения - не плодим пустые папки при отмене
-
-            ResetSummary(targets, "Лог: все узлы. Клик по строке сводки — только её лог.");
-            var orch = NewOrchestrator(true);
-            WireHostCallbacks(orch);
-
-            StartOperation("Выполняется на " + targets.Count + " узлах...", token =>
-            {
-                var res = orch.RunBatch(targets, opt, token);
-                res = OrderLikeTargets(res, targets, r => r.Host);   // порядок как в дереве
-                Ui(() =>
-                {
-                    ReportBatchStatus(res);
-                    WriteSummaryFile(opt.RunLogDir, res);
-                });
-            });
-        }
-
-        // ---------- Обновление репозитория ----------
-        private void OpenRepo()
-        {
-            if (_running) { AppDialog.Info(this, "Операция выполняется", "Дождитесь завершения текущей операции или остановите её."); return; }
-            string repoHost; List<string> repoScripts;
-            using (var f = new RepoDialog(_cfg.RepoHost, _cfg.RepoScripts))
-            {
-                if (f.ShowDialog(this) != DialogResult.OK) return;
-                repoHost = f.Host; repoScripts = f.Scripts;
-            }
-            _cfg.RepoHost = repoHost; _cfg.RepoScripts = repoScripts; Store.SaveConfig(_cfg);
-            RunRepoTargets(repoHost, repoScripts);
-        }
-
-        private void RunRepoTargets(string host, List<string> scripts)
-        {
-            if (!HasUsableCredentials()) { AppDialog.Info(this, "Нет доступных учётных записей", "Добавьте или повторно введите учётную запись в разделе «Доступ и SSH»."); return; }
-            var node = new Node { Name = "repo (" + host + ")", Host = host, Port = 22, Enabled = true };
-            var target = new RunTarget(new SubSystem { Name = "Репозиторий" }, node);
-            var targets = new List<RunTarget> { target };
-
-            string logDir = NewLogDir("repo_");
-
-            if (!AppDialog.Confirm(this, "Обновление репозитория", "Запустить обновление репозитория на " + host + "?\nСкриптов: " + scripts.Count, "Запустить")) return;
-
-            Directory.CreateDirectory(logDir);   // после подтверждения
-
-            ResetSummary(targets, "Обновление репозитория. Весь вывод скрипта - в логе ниже.");
-            var orch = NewOrchestrator(false);   // весь вывод reposync, без фильтра
-            WireHostCallbacks(orch);
-            orch.OnRepoProgress = (h, line) => BufferLog(h, line, true);       // прогресс - на месте
-            orch.OnRepoCount = (h, done, total) => Ui(() => SetRepoCount(h, done, total));
-
-            StartOperation("Обновление репозитория на " + host + "...", token =>
-            {
-                var r = orch.RunRepo(target, scripts, _cfg.Settings, logDir, token);
-                Ui(() => SetStatus("Репозиторий: " + StatusText(r.Status) + " | " + r.Note));
-            });
-        }
-
 
     }
 }
